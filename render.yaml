@@ -25,7 +25,6 @@ services:
   - type: web
     name: app-viagens-web
     runtime: static
-    region: frankfurt
     plan: free
     rootDir: .
     buildCommand: bash scripts/render-build-web.sh
