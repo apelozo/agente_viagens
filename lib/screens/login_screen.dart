@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/login_remember_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_card.dart';
@@ -19,10 +20,43 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final senhaController = TextEditingController();
   String? error;
+  bool _rememberMe = false;
+  bool _prefsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberPrefs();
+  }
+
+  Future<void> _loadRememberPrefs() async {
+    final remember = await LoginRememberService.isRememberEnabled();
+    final email = await LoginRememberService.savedEmail();
+    if (!mounted) return;
+    setState(() {
+      _rememberMe = remember;
+      if (remember && email != null && email.isNotEmpty) {
+        emailController.text = email;
+      }
+      _prefsLoaded = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    senhaController.dispose();
+    super.dispose();
+  }
 
   Future<void> submit() async {
     try {
       await widget.authService.login(emailController.text.trim(), senhaController.text.trim());
+      await LoginRememberService.save(
+        remember: _rememberMe,
+        email: emailController.text.trim(),
+      );
+      if (!mounted) return;
       widget.onLogin();
     } catch (e) {
       setState(() => error = 'Falha no login');
@@ -151,7 +185,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => submit(),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        value: _rememberMe,
+                        onChanged: _prefsLoaded
+                            ? (v) => setState(() => _rememberMe = v ?? false)
+                            : null,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text(
+                          'Lembrar e-mail',
+                          style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       AppButton(label: 'Entrar', onPressed: submit),
                       const SizedBox(height: 8),
                       Align(
