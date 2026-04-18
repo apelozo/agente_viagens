@@ -7,7 +7,6 @@ services:
   - type: web
     name: app-viagens-api
     runtime: node
-    region: frankfurt
     plan: free
     rootDir: backend
     buildCommand: npm install
