@@ -1,0 +1,412 @@
+﻿PONTO DE RESTAURACAO DO PROJETO - APP VIAGENS
+Versao: v1.0
+Data de consolidacao: 15/04/2026
+
+FINALIDADE DO DOCUMENTO
+Este documento e a fonte unica de verdade e ponto de restauracao do estado atual do projeto, contendo exclusivamente informacoes disponiveis ate o momento.
+
+1. REGRAS DE NEGOCIO
+1.1 Usuarios e Acesso
+- O sistema possui usuarios com os tipos: "Usuario" e "Agente de Viagem".
+- O status de conta permitido e: "Ativa", "Cancelada" e "Finalizada".
+- Cadastro de usuario exige nome, tipo, email, senha e status (status padrao: "Ativa").
+- Email e unico no sistema.
+- Login e realizado por email e senha.
+- Senha e armazenada com hash bcrypt.
+- A autenticacao das rotas protegidas e feita por JWT no header Authorization: Bearer <token>.
+
+1.2 Relacao Agente x Cliente
+- Existe relacionamento entre agente e cliente via tabela dedicada.
+- Essa relacao e modelada, mas nao ha evidencia de fluxo completo de UI para gestao desse vinculo no frontend atual.
+
+1.3 Viagens
+- Viagem possui descricao, data inicial, data final e situacao.
+- Situacao de viagem permitida: "Ativa", "Cancelada" e "Finalizada".
+- Toda viagem pertence a um usuario (user_id obrigatorio).
+- CRUD completo de viagens esta implementado.
+
+1.4 Cidades, Hoteis, Restaurantes e Passeios
+- Cidades pertencem a uma viagem.
+- Hoteis, restaurantes e passeios pertencem a uma cidade.
+- CRUD completo dessas entidades esta implementado via rota generica por entidade.
+- Excluindo a entidade pai, os dados filhos sao removidos por cascata no banco.
+
+1.5 Datas
+- O backend normaliza datas com prefixo "data_" entre formato BR (DD/MM/AAAA) e formato banco (AAAA-MM-DD).
+- O backend serializa datas para retorno em formato BR quando aplicavel.
+
+1.6 Integracoes Externas
+- Busca de locais: proxy backend para Google Places.
+- Calculo de distancia: proxy backend para Google Distance Matrix.
+- As rotas de integracao sao protegidas por autenticacao.
+
+1.7 Realtime
+- O backend envia eventos via WebSocket para criacao/atualizacao/exclusao de viagens e entidades.
+- O frontend atual nao possui consumo ativo de WebSocket identificado no codigo.
+
+1.8 Interface e Experiencia (estado atual)
+- Tema visual principal em azul + laranja (CTA).
+- Botao principal padronizado com altura 56px e borda arredondada.
+- FAB padronizado.
+- Home com destaque de viagem ativa, lista de outras viagens e estado vazio com CTA.
+- Na tela de login, pressionar Enter no campo senha dispara acao de Entrar.
+
+2. ESTRUTURA DE PASTAS
+2.1 Estrutura Geral do Projeto (raiz)
+- .dart_tool/
+- .idea/
+- android/
+- backend/
+- build/
+- Documentacao Sistema/
+- ios/
+- lib/
+- linux/
+- macos/
+- test/
+- web/
+- windows/
+- DOCUMENTACAO_ATUAL.md
+- PLANO_EVOLUCAO_V2.md
+- README.md
+- pubspec.yaml
+- pubspec.lock
+- analysis_options.yaml
+- .metadata
+
+2.2 Backend (d:\Projetos\Cursor\Viagens\app_viagens\backend)
+- config/
+  - db.js
+- controllers/
+  - authController.js
+  - viagensController.js
+  - placesController.js
+  - distanceController.js
+- middleware/
+  - auth.js
+  - rateLimiter.js
+  - errorHandler.js
+- models/
+  - schema.sql
+  - userModel.js
+  - viagemModel.js
+- routes/
+  - authRoutes.js
+  - viagensRoutes.js
+  - placesRoutes.js
+  - distanceRoutes.js
+- scripts/
+  - initDb.js
+- services/
+  - databaseService.js
+  - googlePlacesService.js
+  - googleDistanceService.js
+  - websocketService.js
+- .env
+- package.json
+- package-lock.json
+- server.js
+
+2.3 Frontend (d:\Projetos\Cursor\Viagens\app_viagens\lib)
+- models/
+  - user.dart
+  - viagem.dart
+- screens/
+  - login_screen.dart
+  - register_screen.dart
+  - home_screen.dart
+  - trip_detail_screen.dart
+  - city_detail_screen.dart
+  - places_search_results_screen.dart
+- services/
+  - api_service.dart
+  - auth_service.dart
+  - place_service.dart
+  - distance_service.dart
+- theme/
+  - app_theme.dart
+- widgets/
+  - app_button.dart
+  - app_card.dart
+  - app_input.dart
+  - app_modal.dart
+- main.dart
+
+3. ESTRUTURA DO BANCO DE DADOS
+Fonte: backend/models/schema.sql
+
+3.1 Tabela usuarios
+- id: SERIAL PRIMARY KEY
+- nome: TEXT NOT NULL
+- tipo: VARCHAR(30) NOT NULL CHECK (tipo IN ('Usuario', 'Agente de Viagem'))
+- email: TEXT NOT NULL UNIQUE
+- senha: TEXT NOT NULL
+- status: VARCHAR(20) NOT NULL CHECK (status IN ('Ativa', 'Cancelada', 'Finalizada')) DEFAULT 'Ativa'
+- created_at: TIMESTAMP DEFAULT NOW()
+
+3.2 Tabela agente_clientes
+- agente_id: INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE
+- cliente_id: INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE
+- PRIMARY KEY (agente_id, cliente_id)
+
+3.3 Tabela viagens
+- id: SERIAL PRIMARY KEY
+- descricao: TEXT NOT NULL
+- data_inicial: DATE NOT NULL
+- data_final: DATE NOT NULL
+- situacao: VARCHAR(20) NOT NULL CHECK (situacao IN ('Ativa', 'Cancelada', 'Finalizada'))
+- user_id: INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE
+
+3.4 Tabela cidades
+- id: SERIAL PRIMARY KEY
+- descricao: TEXT NOT NULL
+- latitude: DECIMAL(10, 7)
+- longitude: DECIMAL(10, 7)
+- viagem_id: INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE
+
+3.5 Tabela hoteis
+- id: SERIAL PRIMARY KEY
+- nome: TEXT NOT NULL
+- data_checkin: DATE
+- data_checkout: DATE
+- endereco: TEXT
+- status_reserva: VARCHAR(10) NOT NULL CHECK (status_reserva IN ('A Pagar', 'Pago'))
+- hora_checkin: TIME
+- hora_checkout: TIME
+- cancelamento_gratuito: BOOLEAN
+- latitude: DECIMAL(10, 7)
+- longitude: DECIMAL(10, 7)
+- observacoes: TEXT
+- cidade_id: INTEGER NOT NULL REFERENCES cidades(id) ON DELETE CASCADE
+
+3.6 Tabela restaurantes
+- id: SERIAL PRIMARY KEY
+- nome: TEXT NOT NULL
+- tipo_comida: TEXT
+- valor_medio: DECIMAL(10, 2)
+- moeda: VARCHAR(10)
+- endereco: TEXT
+- reservado: BOOLEAN
+- data_reserva: DATE
+- hora_reserva: TIME
+- latitude: DECIMAL(10, 7)
+- longitude: DECIMAL(10, 7)
+- observacoes: TEXT
+- cidade_id: INTEGER NOT NULL REFERENCES cidades(id) ON DELETE CASCADE
+
+3.7 Tabela passeios
+- id: SERIAL PRIMARY KEY
+- nome: TEXT NOT NULL
+- tipo_passeio: TEXT
+- valor: DECIMAL(10, 2)
+- moeda: VARCHAR(10)
+- situacao: VARCHAR(20) NOT NULL CHECK (situacao IN ('A Pagar', 'Pago Parcial', 'Pago', 'Gratuito'))
+- endereco: TEXT
+- reservado: BOOLEAN
+- data_reserva: DATE
+- hora_reserva: TIME
+- latitude: DECIMAL(10, 7)
+- longitude: DECIMAL(10, 7)
+- permissao_cancelamento: BOOLEAN
+- observacoes: TEXT
+- cidade_id: INTEGER NOT NULL REFERENCES cidades(id) ON DELETE CASCADE
+
+3.8 Relacionamentos e Cardinalidade
+- usuarios (1) -> (N) viagens
+- viagens (1) -> (N) cidades
+- cidades (1) -> (N) hoteis
+- cidades (1) -> (N) restaurantes
+- cidades (1) -> (N) passeios
+- usuarios (N) <-> (N) usuarios via agente_clientes (agente_id/cliente_id)
+
+3.9 Indices Identificados
+- idx_viagens_user_id ON viagens(user_id)
+- idx_cidades_viagem_id ON cidades(viagem_id)
+- idx_hoteis_cidade_id ON hoteis(cidade_id)
+- idx_restaurantes_cidade_id ON restaurantes(cidade_id)
+- idx_passeios_cidade_id ON passeios(cidade_id)
+
+4. PROGRAMAS/TELAS DESENVOLVIDOS
+4.1 Frontend (Flutter)
+
+4.1.1 Tela de Login
+- Arquivo: lib/screens/login_screen.dart
+- Funcionalidade principal:
+  - autenticar usuario
+  - navegar para cadastro
+  - submit por Enter no campo senha
+
+4.1.2 Tela de Cadastro
+- Arquivo: lib/screens/register_screen.dart
+- Funcionalidade principal:
+  - cadastrar usuario com nome, tipo, email, senha e status
+
+4.1.3 Tela Principal (Home)
+- Arquivo: lib/screens/home_screen.dart
+- Funcionalidade principal:
+  - listar viagens
+  - destacar viagem ativa
+  - criar, editar e excluir viagem
+  - navegar para detalhes da viagem
+
+4.1.4 Tela de Detalhe da Viagem
+- Arquivo: lib/screens/trip_detail_screen.dart
+- Funcionalidade principal:
+  - gerenciar cidades da viagem
+  - acessar detalhe da cidade
+  - iniciar inclusao/edicao de entidades
+
+4.1.5 Tela de Detalhe da Cidade
+- Arquivo: lib/screens/city_detail_screen.dart
+- Funcionalidade principal:
+  - gerenciar hoteis, restaurantes e passeios da cidade
+  - editar/excluir cidade
+
+4.1.6 Tela de Resultados de Busca de Locais
+- Arquivo: lib/screens/places_search_results_screen.dart
+- Funcionalidade principal:
+  - exibir resultados da busca Places
+  - selecionar local para preencher formulario
+
+4.1.7 Tela/Formulario de Entidades
+- Localizacao: classe EntityFormScreen em lib/screens/trip_detail_screen.dart
+- Funcionalidade principal:
+  - formulario dinamico para cidade/hotel/restaurante/passeio
+  - integracao com busca de locais
+
+4.2 Backend (Programas/Modulos)
+
+4.2.1 Servidor Principal
+- Arquivo: backend/server.js
+- Funcionalidade principal:
+  - inicializar API Express
+  - registrar middlewares e rotas
+  - iniciar servidor HTTP e WebSocket
+
+4.2.2 Modulo de Autenticacao
+- Arquivos:
+  - backend/routes/authRoutes.js
+  - backend/controllers/authController.js
+  - backend/middleware/auth.js
+- Funcionalidade principal:
+  - cadastro, login e validacao de token JWT
+
+4.2.3 Modulo de Viagens e Entidades
+- Arquivos:
+  - backend/routes/viagensRoutes.js
+  - backend/controllers/viagensController.js
+  - backend/models/viagemModel.js
+- Funcionalidade principal:
+  - CRUD de viagens
+  - CRUD de cidades/hoteis/restaurantes/passeios
+  - normalizacao de datas
+
+4.2.4 Modulo de Integracao Places
+- Arquivos:
+  - backend/routes/placesRoutes.js
+  - backend/controllers/placesController.js
+  - backend/services/googlePlacesService.js
+- Funcionalidade principal:
+  - proxy autenticado para busca de locais
+
+4.2.5 Modulo de Integracao Distancia
+- Arquivos:
+  - backend/routes/distanceRoutes.js
+  - backend/controllers/distanceController.js
+  - backend/services/googleDistanceService.js
+- Funcionalidade principal:
+  - calculo de distancia/tempo via API externa
+
+4.2.6 Modulo Realtime
+- Arquivo: backend/services/websocketService.js
+- Funcionalidade principal:
+  - inicializar WebSocket e broadcast de eventos
+
+4.2.7 Modulo de Banco
+- Arquivos:
+  - backend/config/db.js
+  - backend/services/databaseService.js
+  - backend/scripts/initDb.js
+- Funcionalidade principal:
+  - conexao ao PostgreSQL
+  - execucao de schema
+
+5. DEFINICOES TECNICAS
+5.1 Linguagens e Frameworks
+- Backend: JavaScript (Node.js + Express)
+- Frontend: Dart (Flutter)
+- Banco: PostgreSQL
+
+5.2 Bibliotecas Principais Identificadas
+Backend (package.json):
+- express
+- pg
+- bcrypt
+- jsonwebtoken
+- ws
+- dotenv
+- axios
+- cors
+
+Frontend:
+- flutter SDK
+- package:http
+
+5.3 Arquitetura Geral (estado atual)
+- Arquitetura cliente-servidor.
+- Frontend Flutter consome API REST do backend.
+- Backend organiza codigo por camadas simples: routes -> controllers -> models/services.
+- Persistencia relacional em PostgreSQL.
+- Realtime via WebSocket no backend.
+
+5.4 Padroes e Convencoes Tecnicas Observadas
+- API REST com endpoints por dominio.
+- Middleware de autenticacao JWT para rotas protegidas.
+- Padrao de erro centralizado por middleware.
+- CRUD generico por entidade para modulos de viagem.
+- Tema global no frontend com componentes reutilizaveis.
+- Base URL do app configuravel por dart-define:
+  - API_BASE_URL
+
+5.5 Configuracoes de Ambiente (disponiveis)
+Variaveis observadas no backend/.env:
+- GOOGLE_PLACES_API_KEY
+- GOOGLE_DISTANCE_MATRIX_API_KEY
+- GOOGLE_API_BASE_URL
+- DATABASE_URL
+- JWT_SECRET
+- PORT
+- NODE_ENV
+
+5.6 Links de Acesso ao Sistema (informacoes disponiveis)
+- Backend local (health check):
+  - http://localhost:5000/health
+  - http://192.168.5.106:5000/health  (acesso em rede local quando PC/celular estao na mesma rede sem isolamento)
+- API base atual no app (fallback):
+  - http://192.168.5.106:5000
+
+6. PONTO DE RESTAURACAO OPERACIONAL
+Para restaurar o sistema no estado atual:
+
+6.1 Backend
+1) Acessar pasta backend
+2) Instalar dependencias: npm install
+3) Garantir backend/.env configurado
+4) Inicializar/atualizar banco quando necessario: npm run db:init
+5) Iniciar servidor: npm start
+
+6.2 Frontend
+1) Na raiz do projeto: flutter pub get
+2) Executar no dispositivo: flutter run -d <deviceId>
+3) Opcionalmente definir API em runtime:
+   flutter run -d <deviceId> --dart-define=API_BASE_URL=http://<ip-ou-host>:5000
+
+7. LACUNAS DE INFORMACAO IDENTIFICADAS (EXPLICITAS)
+As informacoes abaixo foram solicitadas, mas nao estao detalhadas integralmente no material disponivel:
+- Versoes exatas do Flutter SDK, Dart SDK e Node instalados no ambiente em tempo de execucao (nao registradas de forma consolidada no projeto).
+- Versao do PostgreSQL remoto (nao documentada explicitamente).
+- Documento formal de arquitetura com diagramas (C4/UML) nao encontrado.
+- Definicao formal de padroes de projeto nomeados (ex.: Clean Architecture, DDD) nao foi declarada explicitamente; apenas estrutura por camadas observada no codigo.
+- URL publica de producao do frontend (nao identificada; sistema opera local/rede interna no contexto atual).
+
+FIM DO DOCUMENTO

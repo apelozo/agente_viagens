@@ -1,0 +1,25 @@
+{
+  "name": "app-viagens-backend",
+  "version": "1.0.0",
+  "description": "Backend Node.js + Express para gerenciamento de viagens",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "db:init": "node scripts/initDb.js"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^8.0.5",
+    "pg": "^8.13.1",
+    "ws": "^8.18.0"
+  }
+}
