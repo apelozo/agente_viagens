@@ -17,7 +17,14 @@ const suggestionsRoutes = require("./routes/suggestionsRoutes");
 const { authRequired } = require("./middleware/auth");
 
 const app = express();
-app.use(cors());
+const corsOptions = {
+  origin: 'https://agentepessoaldaviagem.netlify.app', // Seu domínio do Netlify
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(rateLimiter);
 
