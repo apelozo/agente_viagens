@@ -102,7 +102,7 @@ async function listByViagem(req, res, next) {
   try {
     const { viagemId } = req.params;
     const result = await db.query(
-      `SELECT id, viagem_id, titulo, tipo, data, hora_inicio, hora_fim, local, link_url, descricao, created_by, created_at
+      `SELECT id, viagem_id, passeio_id, titulo, tipo, data, hora_inicio, hora_fim, local, link_url, descricao, created_by, created_at
        FROM roteiro_blocos
        WHERE viagem_id = $1
        ORDER BY data ASC, hora_inicio ASC NULLS LAST, id ASC`,

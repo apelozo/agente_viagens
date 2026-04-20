@@ -14,31 +14,15 @@ const timelineRoutes = require("./routes/timelineRoutes");
 const timelineController = require("./controllers/timelineController");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const suggestionsRoutes = require("./routes/suggestionsRoutes");
+const mobilityRoutes = require("./routes/mobilityRoutes");
 const { authRequired } = require("./middleware/auth");
 
 const app = express();
-const isProd = process.env.NODE_ENV === "production";
-const allowedOrigins = isProd
-  ? ["https://agentepessoaldaviagem.netlify.app"]
-  : [
-      "https://agentepessoaldaviagem.netlify.app",
-      "http://localhost:3000",
-      "http://localhost:5000",
-      "http://localhost:5173",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:5000",
-      "http://127.0.0.1:5173",
-    ];
-
 const corsOptions = {
-  origin(origin, callback) {
-    // Requests sem origin (curl/Postman/apps mobile) também devem funcionar.
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("CORS origin não permitida."));
-  },
+  origin: "https://agentepessoaldaviagem.netlify.app",
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
-  optionsSuccessStatus: 204,
+  optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
@@ -59,6 +43,7 @@ app.post(
 app.use("/api/timeline", timelineRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/suggestions", suggestionsRoutes);
+app.use("/api/mobility", mobilityRoutes);
 app.use(errorHandler);
 
 const server = http.createServer(app);

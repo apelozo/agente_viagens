@@ -53,6 +53,74 @@ function serializeDates(row) {
   return data;
 }
 
+function parseBoolean(value) {
+  if (value == null) return false;
+  const text = String(value).trim().toLowerCase();
+  return ["1", "true", "sim", "yes", "y"].includes(text);
+}
+
+async function syncPasseioTimelineEvent({ passeioId, actorUserId, client = db }) {
+  const passeioResult = await client.query(
+    `SELECT
+      p.id,
+      p.nome,
+      p.endereco,
+      p.data_reserva,
+      p.hora_reserva,
+      c.viagem_id
+     FROM passeios p
+     JOIN cidades c ON c.id = p.cidade_id
+     WHERE p.id = $1
+     LIMIT 1`,
+    [passeioId]
+  );
+  if (!passeioResult.rows.length) return null;
+  const passeio = passeioResult.rows[0];
+
+  const timelineResult = await client.query(
+    `SELECT * FROM roteiro_blocos WHERE passeio_id = $1 LIMIT 1`,
+    [passeioId]
+  );
+  const existing = timelineResult.rows[0];
+
+  // Sem data de reserva, não há posição temporal consistente para evento vinculado.
+  if (!passeio.data_reserva) {
+    return { action: "skipped_no_date", passeio, timeline: existing || null };
+  }
+
+  if (existing) {
+    const updated = await client.query(
+      `UPDATE roteiro_blocos
+       SET titulo = $1,
+           data = $2,
+           hora_inicio = $3,
+           local = $4
+       WHERE id = $5
+       RETURNING *`,
+      [passeio.nome, passeio.data_reserva, passeio.hora_reserva || null, passeio.endereco || null, existing.id]
+    );
+    return { action: "updated", passeio, timeline: updated.rows[0] };
+  }
+
+  const created = await client.query(
+    `INSERT INTO roteiro_blocos (
+      viagem_id, passeio_id, titulo, tipo, data, hora_inicio, hora_fim, local, link_url, descricao, created_by
+    ) VALUES ($1,$2,$3,'Evento Fixo',$4,$5,NULL,$6,NULL,$7,$8)
+    RETURNING *`,
+    [
+      passeio.viagem_id,
+      passeio.id,
+      passeio.nome,
+      passeio.data_reserva,
+      passeio.hora_reserva || null,
+      passeio.endereco || null,
+      "Evento vinculado automaticamente ao passeio.",
+      actorUserId || null
+    ]
+  );
+  return { action: "created", passeio, timeline: created.rows[0] };
+}
+
 async function listViagens(req, res, next) {
   try {
     const page = Number(req.query.page || 1);
@@ -352,6 +420,20 @@ async function createByEntity(req, res, next) {
       values
     );
     const serialized = serializeDates(result.rows[0]);
+    if (entity.table === "passeios") {
+      const syncResult = await syncPasseioTimelineEvent({
+        passeioId: result.rows[0].id,
+        actorUserId: req.user?.id
+      });
+      if (syncResult?.timeline) {
+        const timelinePayload = serializeDates(syncResult.timeline);
+        if (syncResult.action === "created") {
+          broadcast("timeline_block_created", timelinePayload);
+        } else if (syncResult.action === "updated") {
+          broadcast("timeline_block_updated", timelinePayload);
+        }
+      }
+    }
     broadcast(`${entity.table}_created`, serialized);
     return res.status(201).json(serialized);
   } catch (error) {
@@ -371,6 +453,20 @@ async function updateEntity(req, res, next) {
       [...values, req.params.id]
     );
     const serialized = serializeDates(result.rows[0]);
+    if (entity.table === "passeios" && result.rows[0]) {
+      const syncResult = await syncPasseioTimelineEvent({
+        passeioId: result.rows[0].id,
+        actorUserId: req.user?.id
+      });
+      if (syncResult?.timeline) {
+        const timelinePayload = serializeDates(syncResult.timeline);
+        if (syncResult.action === "created") {
+          broadcast("timeline_block_created", timelinePayload);
+        } else if (syncResult.action === "updated") {
+          broadcast("timeline_block_updated", timelinePayload);
+        }
+      }
+    }
     broadcast(`${entity.table}_updated`, serialized);
     return res.json(serialized);
   } catch (error) {
@@ -381,6 +477,33 @@ async function updateEntity(req, res, next) {
 async function deleteEntity(req, res, next) {
   try {
     const entity = TABLES[req.params.entity];
+    if (entity.table === "passeios") {
+      const passeioId = Number(req.params.id);
+      const deleteRelatedEvent = parseBoolean(req.query.delete_related_event);
+      const existingPasseio = await db.query(`SELECT id FROM passeios WHERE id = $1 LIMIT 1`, [passeioId]);
+      if (!existingPasseio.rows.length) {
+        return res.status(404).json({ message: "Passeio não encontrado." });
+      }
+      const relatedBlocks = await db.query(
+        `SELECT id, viagem_id FROM roteiro_blocos WHERE passeio_id = $1`,
+        [passeioId]
+      );
+      if (deleteRelatedEvent && relatedBlocks.rows.length) {
+        await db.query(`DELETE FROM roteiro_blocos WHERE passeio_id = $1`, [passeioId]);
+      } else if (relatedBlocks.rows.length) {
+        await db.query(`UPDATE roteiro_blocos SET passeio_id = NULL WHERE passeio_id = $1`, [passeioId]);
+      }
+      await db.query(`DELETE FROM passeios WHERE id = $1`, [passeioId]);
+      for (const block of relatedBlocks.rows) {
+        if (deleteRelatedEvent) {
+          broadcast("timeline_block_deleted", { id: block.id, viagem_id: block.viagem_id });
+        } else {
+          broadcast("timeline_block_updated", { id: block.id, passeio_id: null, viagem_id: block.viagem_id });
+        }
+      }
+      broadcast(`${entity.table}_deleted`, { id: req.params.id });
+      return res.status(204).send();
+    }
     await db.query(`DELETE FROM ${entity.table} WHERE id = $1`, [req.params.id]);
     broadcast(`${entity.table}_deleted`, { id: req.params.id });
     return res.status(204).send();

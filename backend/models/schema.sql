@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS passeios (
 CREATE TABLE IF NOT EXISTS roteiro_blocos (
   id SERIAL PRIMARY KEY,
   viagem_id INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+  passeio_id INTEGER REFERENCES passeios(id) ON DELETE SET NULL,
   titulo TEXT NOT NULL,
   tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('Evento Fixo', 'Tempo Livre')),
   data DATE NOT NULL,
@@ -118,6 +119,9 @@ CREATE TABLE IF NOT EXISTS roteiro_blocos (
   created_by INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE roteiro_blocos
+ADD COLUMN IF NOT EXISTS passeio_id INTEGER REFERENCES passeios(id) ON DELETE SET NULL;
 
 ALTER TABLE roteiro_blocos
 ADD COLUMN IF NOT EXISTS link_url TEXT;
@@ -132,6 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_restaurantes_cidade_id ON restaurantes(cidade_id)
 CREATE INDEX IF NOT EXISTS idx_passeios_cidade_id ON passeios(cidade_id);
 CREATE INDEX IF NOT EXISTS idx_roteiro_blocos_viagem_id ON roteiro_blocos(viagem_id);
 CREATE INDEX IF NOT EXISTS idx_roteiro_blocos_data ON roteiro_blocos(data);
+CREATE INDEX IF NOT EXISTS idx_roteiro_blocos_passeio_id ON roteiro_blocos(passeio_id);
 
 CREATE TABLE IF NOT EXISTS wishlist_itens (
   id SERIAL PRIMARY KEY,
