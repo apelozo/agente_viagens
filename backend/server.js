@@ -17,11 +17,28 @@ const suggestionsRoutes = require("./routes/suggestionsRoutes");
 const { authRequired } = require("./middleware/auth");
 
 const app = express();
+const isProd = process.env.NODE_ENV === "production";
+const allowedOrigins = isProd
+  ? ["https://agentepessoaldaviagem.netlify.app"]
+  : [
+      "https://agentepessoaldaviagem.netlify.app",
+      "http://localhost:3000",
+      "http://localhost:5000",
+      "http://localhost:5173",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:5000",
+      "http://127.0.0.1:5173",
+    ];
+
 const corsOptions = {
-  origin: 'https://agentepessoaldaviagem.netlify.app', // Seu domínio do Netlify
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  origin(origin, callback) {
+    // Requests sem origin (curl/Postman/apps mobile) também devem funcionar.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("CORS origin não permitida."));
+  },
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
