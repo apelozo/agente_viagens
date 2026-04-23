@@ -344,6 +344,38 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
   }
 
+  Future<void> _openGoogleMapsNavigation(Map<String, dynamic> item) async {
+    final nome = (item['nome'] ?? '').toString().trim();
+    final endereco = (item['endereco'] ?? '').toString().trim();
+    final destino = endereco.isNotEmpty ? endereco : nome;
+    if (destino.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe ao menos nome ou endereço para navegar.')),
+      );
+      return;
+    }
+
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': destino,
+      'travelmode': 'driving',
+    });
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível abrir o Google Maps neste dispositivo.')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao abrir o Google Maps.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final mappable = _mappableItems();
@@ -619,6 +651,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
+                  IconButton(
+                    tooltip: 'Navegar',
+                    onPressed: () => _openGoogleMapsNavigation(it),
+                    icon: const Icon(Icons.navigation_rounded, color: AppColors.primaryBlue),
+                  ),
                   IconButton(
                     tooltip: 'Editar',
                     onPressed: () => _openForm(item: it),

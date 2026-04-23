@@ -74,9 +74,11 @@ CREATE TABLE IF NOT EXISTS restaurantes (
   id SERIAL PRIMARY KEY,
   nome TEXT NOT NULL,
   tipo_comida TEXT,
+  gluten_opcao VARCHAR(30) NOT NULL DEFAULT 'Normal' CHECK (gluten_opcao IN ('Gluten Free', 'Gluten Friendly', 'Normal')),
   valor_medio DECIMAL(10, 2),
   moeda VARCHAR(10),
   endereco TEXT,
+  link_url TEXT,
   reservado BOOLEAN,
   data_reserva DATE,
   hora_reserva TIME,
@@ -85,6 +87,25 @@ CREATE TABLE IF NOT EXISTS restaurantes (
   observacoes TEXT,
   cidade_id INTEGER NOT NULL REFERENCES cidades(id) ON DELETE CASCADE
 );
+
+ALTER TABLE restaurantes
+ADD COLUMN IF NOT EXISTS gluten_opcao VARCHAR(30) NOT NULL DEFAULT 'Normal';
+
+ALTER TABLE restaurantes
+ADD COLUMN IF NOT EXISTS link_url TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'restaurantes_gluten_opcao_check'
+  ) THEN
+    ALTER TABLE restaurantes
+      ADD CONSTRAINT restaurantes_gluten_opcao_check
+      CHECK (gluten_opcao IN ('Gluten Free', 'Gluten Friendly', 'Normal'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS passeios (
   id SERIAL PRIMARY KEY,

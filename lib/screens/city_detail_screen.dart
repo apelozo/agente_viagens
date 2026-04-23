@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/viagem.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -53,7 +54,7 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
     });
   }
 
-  Future<void> deleteByPath(String path) async {
+  Future<void> deleteByPath(String path, {EntityType? type}) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -66,7 +67,25 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
       ),
     );
     if (confirm != true) return;
-    await widget.api.deleteRequest(path);
+    var finalPath = path;
+    if (type == EntityType.passeio) {
+      final deleteEventToo = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Excluir evento vinculado?'),
+          content: const Text(
+            'Este passeio pode ter um evento relacionado na timeline. Deseja excluir esse evento também?',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Manter evento')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Excluir evento')),
+          ],
+        ),
+      );
+      finalPath =
+          '$path${path.contains('?') ? '&' : '?'}delete_related_event=${deleteEventToo == true ? 'true' : 'false'}';
+    }
+    await widget.api.deleteRequest(finalPath);
     await load();
   }
 
@@ -85,6 +104,31 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
       ),
     );
     await load();
+  }
+
+  Future<void> _openGoogleMapsNavigation(Map<String, dynamic> item) async {
+    final nome = asText(item['nome']).trim();
+    final endereco = asText(item['endereco']).trim();
+    final destino = endereco.isNotEmpty ? endereco : nome;
+    if (destino.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe nome ou endereço para abrir a navegação.')),
+      );
+      return;
+    }
+
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': destino,
+      'travelmode': 'driving',
+    });
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir o Google Maps neste dispositivo.')),
+      );
+    }
   }
 
   Widget _sectionCard({
@@ -151,9 +195,20 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                '${asText(item['nome'])}${asText(item['situacao']).isNotEmpty ? ' · ${asText(item['situacao'])}' : ''}',
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              child: Builder(
+                                builder: (_) {
+                                  final nome = asText(item['nome']);
+                                  final situacao = asText(item['situacao']);
+                                  final gluten = asText(item['gluten_opcao']);
+                                  final suffix = <String>[
+                                    if (situacao.isNotEmpty) situacao,
+                                    if (type == EntityType.restaurante && gluten.isNotEmpty) gluten,
+                                  ].join(' · ');
+                                  return Text(
+                                    suffix.isEmpty ? nome : '$nome · $suffix',
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  );
+                                },
                               ),
                             ),
                             IconButton(
@@ -163,11 +218,26 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
                               onPressed: () => openForm(type, item: item),
                               icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.primaryBlue),
                             ),
+                            if (type == EntityType.restaurante)
+                              IconButton(
+                                tooltip: 'Navegar',
+                                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                padding: EdgeInsets.zero,
+                                onPressed: () => _openGoogleMapsNavigation(item),
+                                icon: const Icon(
+                                  Icons.navigation_rounded,
+                                  size: 20,
+                                  color: AppColors.primaryBlue,
+                                ),
+                              ),
                             IconButton(
                               tooltip: 'Excluir',
                               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                               padding: EdgeInsets.zero,
-                              onPressed: () => deleteByPath('/api/viagens/$apiEntity/item/${item['id']}'),
+                              onPressed: () => deleteByPath(
+                                '/api/viagens/$apiEntity/item/${item['id']}',
+                                type: type,
+                              ),
                               icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.errorRed),
                             ),
                           ],

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_service.dart';
 import '../services/distance_service.dart';
+import '../services/mobility_service.dart';
 import '../theme/app_theme.dart';
 
 /// Estima deslocamento entre dois blocos **Evento Fixo** (mesmo dia): texto de [local] + Places Text Search e Distance Matrix.
@@ -37,6 +39,7 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
   bool loading = false;
   String? errorText;
   Map<String, dynamic>? distancias;
+  String? _recommendedMode;
 
   static double? _toD(dynamic v) {
     if (v == null) return null;
@@ -71,6 +74,7 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
       loading = true;
       errorText = null;
       distancias = null;
+      _recommendedMode = null;
     });
     final lo = (widget.blocoOrigem['local'] ?? '').toString();
     final ld = (widget.blocoDestino['local'] ?? '').toString();
@@ -81,6 +85,10 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
       });
       return;
     }
+    double? olat;
+    double? olng;
+    double? dlat;
+    double? dlng;
     try {
       final (oLat, oLng) = await _geocodeLocal(lo.isEmpty ? null : lo);
       final (dLat, dLng) = await _geocodeLocal(ld.isEmpty ? null : ld);
@@ -99,14 +107,14 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
         });
         return;
       }
-      final olat = oLat;
-      final olng = oLng;
-      final dlat = dLat;
-      final dlng = dLng;
+      olat = oLat;
+      olng = oLng;
+      dlat = dLat;
+      dlng = dLng;
       if (olat == null || olng == null || dlat == null || dlng == null) return;
 
-      final svc = DistanceService(widget.api);
-      final data = await svc.calculate(
+      final mobility = MobilityService(widget.api);
+      final data = await mobility.compare(
         origemLat: olat,
         origemLng: olng,
         destinoLat: dlat,
@@ -114,10 +122,34 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
       );
       if (!mounted) return;
       setState(() {
-        distancias = data;
+        distancias = data['comparison'] is Map
+            ? Map<String, dynamic>.from(data['comparison'] as Map)
+            : null;
+        _recommendedMode = data['recommended_mode']?.toString();
         loading = false;
       });
     } catch (e) {
+      if (olat != null && olng != null && dlat != null && dlng != null) {
+        try {
+          final fallbackSvc = DistanceService(widget.api);
+          final fallback = await fallbackSvc.calculate(
+            origemLat: olat,
+            origemLng: olng,
+            destinoLat: dlat,
+            destinoLng: dlng,
+          );
+          if (!mounted) return;
+          setState(() {
+            distancias = fallback;
+            loading = false;
+            errorText = null;
+            _recommendedMode = widget.modoPreferido;
+          });
+          return;
+        } catch (_) {
+          // Fallback também falhou; mantém mensagem amigável abaixo.
+        }
+      }
       if (!mounted) return;
       setState(() {
         loading = false;
@@ -143,6 +175,7 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
         loading = false;
         errorText = null;
         distancias = null;
+        _recommendedMode = null;
       });
     }
   }
@@ -157,9 +190,47 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
     return '$t · $d';
   }
 
+  String _modeLabel(String mode) {
+    switch (mode) {
+      case 'walking':
+        return 'A pé';
+      case 'transit':
+        return 'Transporte público';
+      default:
+        return 'Carro';
+    }
+  }
+
+  Future<void> _openNavigation(String mode) async {
+    final origem = (widget.blocoOrigem['local'] ?? '').toString().trim();
+    final destino = (widget.blocoDestino['local'] ?? '').toString().trim();
+    if (origem.isEmpty || destino.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Origem e destino precisam estar preenchidos para abrir a navegação.')),
+      );
+      return;
+    }
+
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'origin': origem,
+      'destination': destino,
+      'travelmode': mode,
+    });
+
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir o Google Maps neste dispositivo.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pref = widget.modoPreferido ?? 'driving';
+    final recommended = _recommendedMode;
 
     if (!_pediuCalculo && !loading && distancias == null && errorText == null) {
       return Padding(
@@ -217,24 +288,36 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
 
     Widget linha(String key, IconData icon, String label) {
       final map = d[key] is Map ? Map<String, dynamic>.from(d[key] as Map) : null;
+      final hasData = map != null && (map['tempo_minutos'] != null || map['distancia_km'] != null);
       final isPref = key == pref;
+      final isRecommended = recommended != null && recommended == key;
       return Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: isPref ? AppColors.primaryBlue : const Color(0xFF94A3B8)),
+            Icon(icon, size: 16, color: isRecommended ? AppColors.accentOrange : (isPref ? AppColors.primaryBlue : const Color(0xFF94A3B8))),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 '$label: ${_fmt(map)}',
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: isPref ? FontWeight.w700 : FontWeight.w400,
-                  color: isPref ? AppColors.darkGray : const Color(0xFF64748B),
+                  fontWeight: (isPref || isRecommended) ? FontWeight.w700 : FontWeight.w400,
+                  color: (isPref || isRecommended) ? AppColors.darkGray : const Color(0xFF64748B),
                 ),
               ),
             ),
-            if (isPref)
+            if (isRecommended)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.accentOrange),
+                ),
+                child: const Text('recomendado', style: TextStyle(fontSize: 10, color: AppColors.accentOrange)),
+              )
+            else if (isPref)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -243,6 +326,16 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
                 ),
                 child: const Text('preferido', style: TextStyle(fontSize: 10, color: AppColors.primaryBlue)),
               ),
+            if (hasData) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Navegar no Google Maps',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                onPressed: () => _openNavigation(key),
+                icon: const Icon(Icons.navigation_rounded, size: 18, color: AppColors.accentOrange),
+              ),
+            ],
           ],
         ),
       );
@@ -278,6 +371,31 @@ class _TimelineMobilitySegmentState extends State<TimelineMobilitySegment> {
               ),
             ],
           ),
+          if (recommended != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFDBA74)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, size: 15, color: AppColors.accentOrange),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Melhor opção agora: ${_modeLabel(recommended)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accentOrange,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           linha('driving', Icons.directions_car_outlined, 'Carro'),
           linha('walking', Icons.directions_walk_outlined, 'A pé'),

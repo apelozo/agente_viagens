@@ -19,7 +19,10 @@ const { authRequired } = require("./middleware/auth");
 
 const app = express();
 const corsOptions = {
+  // Produção (Netlify):
   origin: "https://agentepessoaldaviagem.netlify.app",
+  // Desenvolvimento (libera geral para testes locais):
+  // origin: true,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
   optionsSuccessStatus: 204

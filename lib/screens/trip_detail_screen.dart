@@ -11,6 +11,7 @@ import '../widgets/app_screen_chrome.dart';
 import 'city_detail_screen.dart';
 import 'meio_transporte_form_screen.dart';
 import 'places_search_results_screen.dart';
+import 'restaurante_search_screen.dart';
 import 'timeline_screen.dart';
 import 'wishlist_screen.dart';
 
@@ -38,6 +39,27 @@ class DateTextInputFormatter extends TextInputFormatter {
     final text = buffer.toString();
     return TextEditingValue(
         text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
+}
+
+class TimeTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length > 4) return oldValue;
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      buffer.write(digits[i]);
+      if (i == 1 && i != digits.length - 1) {
+        buffer.write(':');
+      }
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 }
 
@@ -784,6 +806,22 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                 color: Colors.white),
                           ),
                           IconButton(
+                            tooltip: 'Pesquisar restaurantes',
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => RestauranteSearchScreen(
+                                    api: widget.api,
+                                    viagem: widget.viagem,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.restaurant_menu_rounded,
+                                color: Colors.white),
+                          ),
+                          IconButton(
                             tooltip: 'Abrir timeline',
                             onPressed: () async {
                               await Navigator.push(
@@ -939,6 +977,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   final descricaoCtrl = TextEditingController();
   final enderecoCtrl = TextEditingController();
   final obsCtrl = TextEditingController();
+  final linkCtrl = TextEditingController();
   final latitudeCtrl = TextEditingController();
   final longitudeCtrl = TextEditingController();
   final valorCtrl = TextEditingController();
@@ -951,6 +990,11 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     'Internacional',
     'Asiatica',
     'Outras',
+  ];
+  static const List<String> _glutenOpcoes = [
+    'Gluten Free',
+    'Gluten Friendly',
+    'Normal',
   ];
   static const List<String> _tiposPasseio = [
     'Museu',
@@ -965,6 +1009,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   ];
   String moeda = 'BRL';
   String tipoComida = 'Outras';
+  String glutenOpcao = 'Normal';
   String tipoPasseioSel = 'Museu';
   final data1Ctrl = TextEditingController();
   final data2Ctrl = TextEditingController();
@@ -977,6 +1022,38 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   bool permissaoCancelamento = false;
   bool loadingSearch = false;
   String? error;
+  final FocusNode _saveButtonFocusNode = FocusNode();
+
+  String _normalizeDateInputValue(dynamic value) {
+    if (value == null) return '';
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return '';
+    final br = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(raw);
+    if (br != null) return raw;
+    final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(raw);
+    if (iso != null) return '${iso.group(3)}/${iso.group(2)}/${iso.group(1)}';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) {
+      final dd = parsed.day.toString().padLeft(2, '0');
+      final mm = parsed.month.toString().padLeft(2, '0');
+      final yyyy = parsed.year.toString();
+      return '$dd/$mm/$yyyy';
+    }
+    return raw;
+  }
+
+  String _normalizeTimeInputValue(dynamic value) {
+    if (value == null) return '';
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return '';
+    final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(raw);
+    if (match != null) {
+      final hh = match.group(1)!.padLeft(2, '0');
+      final mm = match.group(2)!;
+      return '$hh:$mm';
+    }
+    return raw;
+  }
 
   @override
   void initState() {
@@ -987,6 +1064,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     descricaoCtrl.text = (item['descricao'] ?? '').toString();
     enderecoCtrl.text = (item['endereco'] ?? '').toString();
     obsCtrl.text = (item['observacoes'] ?? '').toString();
+    linkCtrl.text = (item['link_url'] ?? '').toString();
     latitudeCtrl.text = (item['latitude'] ?? '').toString();
     longitudeCtrl.text = (item['longitude'] ?? '').toString();
     valorCtrl.text = (item['valor'] ?? item['valor_medio'] ?? '').toString();
@@ -996,17 +1074,35 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     tipoComida = _tiposComida.contains(tcRaw) ? tcRaw : 'Outras';
     final tpRaw = (item['tipo_passeio'] ?? '').toString().trim();
     tipoPasseioSel = _tiposPasseio.contains(tpRaw) ? tpRaw : 'Museu';
-    data1Ctrl.text =
-        (item['data_checkin'] ?? item['data_reserva'] ?? '').toString();
-    data2Ctrl.text = (item['data_checkout'] ?? '').toString();
-    hora1Ctrl.text =
-        (item['hora_checkin'] ?? item['hora_reserva'] ?? '').toString();
-    hora2Ctrl.text = (item['hora_checkout'] ?? '').toString();
+    final goRaw = (item['gluten_opcao'] ?? '').toString().trim();
+    glutenOpcao = _glutenOpcoes.contains(goRaw) ? goRaw : 'Normal';
+    data1Ctrl.text = _normalizeDateInputValue(item['data_checkin'] ?? item['data_reserva']);
+    data2Ctrl.text = _normalizeDateInputValue(item['data_checkout']);
+    hora1Ctrl.text = _normalizeTimeInputValue(item['hora_checkin'] ?? item['hora_reserva']);
+    hora2Ctrl.text = _normalizeTimeInputValue(item['hora_checkout']);
     statusReserva = (item['status_reserva'] ?? 'A Pagar').toString();
     situacaoPasseio = (item['situacao'] ?? 'A Pagar').toString();
     reservado = item['reservado'] == true;
     cancelamentoGratuito = item['cancelamento_gratuito'] == true;
     permissaoCancelamento = item['permissao_cancelamento'] == true;
+  }
+
+  @override
+  void dispose() {
+    _saveButtonFocusNode.dispose();
+    nomeCtrl.dispose();
+    descricaoCtrl.dispose();
+    enderecoCtrl.dispose();
+    obsCtrl.dispose();
+    linkCtrl.dispose();
+    latitudeCtrl.dispose();
+    longitudeCtrl.dispose();
+    valorCtrl.dispose();
+    data1Ctrl.dispose();
+    data2Ctrl.dispose();
+    hora1Ctrl.dispose();
+    hora2Ctrl.dispose();
+    super.dispose();
   }
 
   bool get isCidade => widget.type == EntityType.cidade;
@@ -1060,7 +1156,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     final lat = latRaw.isEmpty ? null : double.tryParse(latRaw);
     final lng = lngRaw.isEmpty ? null : double.tryParse(lngRaw);
 
-    late final String tipoLugar;
+    String? tipoLugar;
     late final String queryComposite;
     late final String resultsTitle;
     late final IconData thumbIcon;
@@ -1076,9 +1172,8 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       resultsTitle = 'Resultados — Hotéis';
       thumbIcon = Icons.hotel;
     } else if (isPasseio) {
-      tipoLugar = 'tourist_attraction';
-      queryComposite =
-          _buildPlacesQuery('tourist_attraction', namePart, cityName);
+      tipoLugar = null;
+      queryComposite = '$namePart $cityName'.replaceAll(RegExp(r'\s+'), ' ').trim();
       resultsTitle = 'Resultados — Passeios';
       thumbIcon = Icons.attractions;
     } else {
@@ -1088,9 +1183,11 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     setState(() => loadingSearch = true);
     try {
       final body = <String, dynamic>{
-        'tipo_lugar': tipoLugar,
         'query': queryComposite,
       };
+      if (tipoLugar != null && tipoLugar.isNotEmpty) {
+        body['tipo_lugar'] = tipoLugar;
+      }
       if (lat != null) body['latitude'] = lat;
       if (lng != null) body['longitude'] = lng;
 
@@ -1179,10 +1276,12 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       payload = {
         'nome': nomeCtrl.text.trim(),
         'tipo_comida': tipoComida,
+        'gluten_opcao': glutenOpcao,
         'valor_medio': _parseDecimalField(valorCtrl.text),
         'moeda': moeda,
         'endereco':
             enderecoCtrl.text.trim().isEmpty ? null : enderecoCtrl.text.trim(),
+        'link_url': linkCtrl.text.trim().isEmpty ? null : linkCtrl.text.trim(),
         'reservado': reservado,
         'data_reserva': reservado
             ? (data1Ctrl.text.trim().isEmpty ? null : data1Ctrl.text.trim())
@@ -1241,209 +1340,233 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     return Scaffold(
       appBar: AppScreenChrome.appBar(context, title: title),
       body: Container(
-        decoration:
-            const BoxDecoration(gradient: AppGradients.screenBackground),
+        decoration: const BoxDecoration(gradient: AppGradients.screenBackground),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: AppLayout.screenPadding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.cidade != null) ...[
-                  Text(
-                    'Cidade: ${(widget.cidade!['descricao'] ?? '').toString()}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                Text('Dados', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                if (isCidade)
-                  TextField(
-                      controller: descricaoCtrl,
-                      decoration: const InputDecoration(
-                          labelText: 'Descrição da cidade'))
-                else ...[
-                  Row(
+          child: FocusTraversalGroup(
+            child: Shortcuts(
+              shortcuts: <ShortcutActivator, Intent>{
+                const SingleActivator(LogicalKeyboardKey.enter): const NextFocusIntent(),
+              },
+              child: Actions(
+                actions: <Type, Action<Intent>>{
+                  NextFocusIntent: NextFocusAction(),
+                },
+                child: SingleChildScrollView(
+                  padding: AppLayout.screenPadding,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                          child: TextField(
-                              controller: nomeCtrl,
-                              decoration:
-                                  const InputDecoration(labelText: 'Nome'))),
-                      if (isHotel || isRestaurante || isPasseio) ...[
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 46,
-                          height: 46,
-                          child: IconButton.filled(
-                            onPressed:
-                                loadingSearch ? null : searchGooglePlaces,
-                            style: IconButton.styleFrom(
-                                backgroundColor: AppColors.accentOrange,
-                                foregroundColor: Colors.white),
-                            icon: loadingSearch
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white))
-                                : const Icon(Icons.search),
-                          ),
+                      if (widget.cidade != null) ...[
+                        Text(
+                          'Cidade: ${(widget.cidade!['descricao'] ?? '').toString()}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      Text('Dados', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 12),
+                      if (isCidade)
+                        TextField(
+                          controller: descricaoCtrl,
+                          decoration: const InputDecoration(labelText: 'Descrição da cidade'),
+                        )
+                      else ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: nomeCtrl,
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                                decoration: const InputDecoration(labelText: 'Nome'),
+                              ),
+                            ),
+                            if (isHotel || isRestaurante || isPasseio) ...[
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 46,
+                                height: 46,
+                                child: IconButton.filled(
+                                  onPressed: loadingSearch ? null : searchGooglePlaces,
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppColors.accentOrange,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  icon: loadingSearch
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : const Icon(Icons.search),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: enderecoCtrl,
+                          textInputAction: TextInputAction.next,
+                          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                          decoration: const InputDecoration(labelText: 'Endereço completo'),
                         ),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: enderecoCtrl,
-                      decoration: const InputDecoration(
-                          labelText: 'Endereço completo')),
-                ],
-                if (isHotel || isRestaurante || isPasseio) ...[
-                  const SizedBox(height: 16),
-                  Text('Valores e Reserva',
-                      style: Theme.of(context).textTheme.titleLarge),
-                ],
-                if (isHotel) ...[
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey<String>(statusReserva),
-                    initialValue: statusReserva,
-                    items: const [
-                      DropdownMenuItem(
-                          value: 'A Pagar', child: Text('A Pagar')),
-                      DropdownMenuItem(value: 'Pago', child: Text('Pago')),
-                    ],
-                    onChanged: (v) =>
-                        setState(() => statusReserva = v ?? 'A Pagar'),
-                    decoration:
-                        const InputDecoration(labelText: 'Status da reserva'),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: data1Ctrl,
-                          inputFormatters: [DateTextInputFormatter()],
-                          decoration: const InputDecoration(
-                              labelText: 'Data check-in (DD/MM/AAAA)'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: hora1Ctrl,
-                          decoration: const InputDecoration(
-                              labelText: 'Hora check-in (HH:mm)'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: data2Ctrl,
-                          inputFormatters: [DateTextInputFormatter()],
-                          decoration: const InputDecoration(
-                              labelText: 'Data check-out (DD/MM/AAAA)'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: hora2Ctrl,
-                          decoration: const InputDecoration(
-                              labelText: 'Hora check-out (HH:mm)'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Cancelamento gratuito'),
-                    value: cancelamentoGratuito,
-                    onChanged: (v) => setState(() => cancelamentoGratuito = v),
-                  ),
-                ],
-                if (isRestaurante) ...[
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: valorCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,]'))
+                      if (isHotel || isRestaurante || isPasseio) ...[
+                        const SizedBox(height: 16),
+                        Text('Valores e Reserva', style: Theme.of(context).textTheme.titleLarge),
+                      ],
+                      if (isHotel) ...[
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey<String>(statusReserva),
+                          initialValue: statusReserva,
+                          items: const [
+                            DropdownMenuItem(value: 'A Pagar', child: Text('A Pagar')),
+                            DropdownMenuItem(value: 'Pago', child: Text('Pago')),
                           ],
+                          onChanged: (v) => setState(() => statusReserva = v ?? 'A Pagar'),
+                          decoration: const InputDecoration(labelText: 'Status da reserva'),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: data1Ctrl,
+                                inputFormatters: [DateTextInputFormatter()],
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                                decoration: const InputDecoration(labelText: 'Data check-in (DD/MM/AAAA)'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: hora1Ctrl,
+                                inputFormatters: [TimeTextInputFormatter()],
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                                decoration: const InputDecoration(labelText: 'Hora check-in (HH:mm)'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: data2Ctrl,
+                                inputFormatters: [DateTextInputFormatter()],
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                                decoration: const InputDecoration(labelText: 'Data check-out (DD/MM/AAAA)'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: hora2Ctrl,
+                                inputFormatters: [TimeTextInputFormatter()],
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                                decoration: const InputDecoration(labelText: 'Hora check-out (HH:mm)'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Cancelamento gratuito'),
+                          value: cancelamentoGratuito,
+                          onChanged: (v) => setState(() => cancelamentoGratuito = v),
+                        ),
+                      ],
+                      if (isRestaurante) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: valorCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                                decoration: const InputDecoration(labelText: 'Valor Médio por Pessoa'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: DropdownButtonFormField<String>(
+                                key: ValueKey<String>(moeda),
+                                initialValue: moeda,
+                                items: _moedas.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                                onChanged: (v) => setState(() => moeda = v ?? 'BRL'),
+                                decoration: const InputDecoration(labelText: 'Moeda'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey<String>(tipoComida),
+                          initialValue: tipoComida,
+                          items: _tiposComida.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                          onChanged: (v) => setState(() => tipoComida = v ?? 'Outras'),
+                          decoration: const InputDecoration(labelText: 'Tipo de comida'),
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey<String>(glutenOpcao),
+                          initialValue: glutenOpcao,
+                          items: _glutenOpcoes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                          onChanged: (v) => setState(() => glutenOpcao = v ?? 'Normal'),
                           decoration: const InputDecoration(
-                              labelText: 'Valor Médio por Pessoa'),
+                            labelText: 'Opção de glúten',
+                            helperText: 'Gluten Free / Gluten Friendly / Normal',
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey<String>(moeda),
-                          initialValue: moeda,
-                          items: _moedas
-                              .map((e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (v) => setState(() => moeda = v ?? 'BRL'),
-                          decoration: const InputDecoration(labelText: 'Moeda'),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: linkCtrl,
+                          textInputAction: TextInputAction.next,
+                          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                          decoration: const InputDecoration(
+                            labelText: 'Link do restaurante',
+                            hintText: 'https://...',
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey<String>(tipoComida),
-                    initialValue: tipoComida,
-                    items: _tiposComida
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => tipoComida = v ?? 'Outras'),
-                    decoration:
-                        const InputDecoration(labelText: 'Tipo de comida'),
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Mesa reservada?'),
-                    value: reservado,
-                    onChanged: (v) => setState(() => reservado = v),
-                  ),
-                  if (reservado) ...[
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: data1Ctrl,
-                      inputFormatters: [DateTextInputFormatter()],
-                      decoration: const InputDecoration(
-                          labelText: 'Data reserva (DD/MM/AAAA)'),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: hora1Ctrl,
-                      decoration: const InputDecoration(
-                          labelText: 'Hora reserva (HH:mm)'),
-                    ),
-                  ],
-                ],
-                if (isPasseio) ...[
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Mesa reservada?'),
+                          value: reservado,
+                          onChanged: (v) => setState(() => reservado = v),
+                        ),
+                        if (reservado) ...[
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: data1Ctrl,
+                            inputFormatters: [DateTextInputFormatter()],
+                            textInputAction: TextInputAction.next,
+                            onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                            decoration: const InputDecoration(labelText: 'Data reserva (DD/MM/AAAA)'),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: hora1Ctrl,
+                            inputFormatters: [TimeTextInputFormatter()],
+                            textInputAction: TextInputAction.next,
+                            onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                            decoration: const InputDecoration(labelText: 'Hora reserva (HH:mm)'),
+                          ),
+                        ],
+                      ],
+                      if (isPasseio) ...[
                   const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1523,12 +1646,17 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                     TextField(
                       controller: data1Ctrl,
                       inputFormatters: [DateTextInputFormatter()],
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                       decoration: const InputDecoration(
                           labelText: 'Data reserva (DD/MM/AAAA)'),
                     ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: hora1Ctrl,
+                      inputFormatters: [TimeTextInputFormatter()],
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                       decoration: const InputDecoration(
                           labelText: 'Hora reserva (HH:mm)'),
                     ),
@@ -1557,6 +1685,8 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                 TextField(
                     controller: obsCtrl,
                     maxLines: 3,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _saveButtonFocusNode.requestFocus(),
                     decoration:
                         const InputDecoration(labelText: 'Observações')),
                 if (error != null) ...[
@@ -1567,15 +1697,21 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                           fontWeight: FontWeight.w700)),
                 ],
                 const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: AppButton(
-                    label: widget.item == null ? 'Salvar' : 'Atualizar',
-                    onPressed: submit,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: Focus(
+                          focusNode: _saveButtonFocusNode,
+                          child: AppButton(
+                            label: widget.item == null ? 'Salvar' : 'Atualizar',
+                            onPressed: submit,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
