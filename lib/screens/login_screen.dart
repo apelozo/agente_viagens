@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import '../services/auth_service.dart';
 import '../services/login_remember_service.dart';
 import '../theme/app_theme.dart';
@@ -32,11 +33,15 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadRememberPrefs() async {
     final remember = await LoginRememberService.isRememberEnabled();
     final email = await LoginRememberService.savedEmail();
+    final password = await LoginRememberService.savedPassword();
     if (!mounted) return;
     setState(() {
       _rememberMe = remember;
       if (remember && email != null && email.isNotEmpty) {
         emailController.text = email;
+      }
+      if (remember && password != null && password.isNotEmpty) {
+        senhaController.text = password;
       }
       _prefsLoaded = true;
     });
@@ -49,17 +54,61 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  String _extractApiMessage(Object error) {
+    final raw = error.toString();
+    final prefix = 'Exception:';
+    final cleaned = raw.startsWith(prefix) ? raw.substring(prefix.length).trim() : raw;
+    if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(cleaned);
+        if (decoded is Map && decoded['message'] != null) {
+          return decoded['message'].toString();
+        }
+      } catch (_) {
+        // Keep raw message if payload is not valid JSON.
+      }
+    }
+    return cleaned;
+  }
+
+  String _friendlyLoginError(Object error) {
+    final msg = _extractApiMessage(error).trim();
+    final lower = msg.toLowerCase();
+    if (lower.contains('credenciais inválidas') || lower.contains('credenciais invalidas')) {
+      return 'E-mail ou senha inválidos.';
+    }
+    if (lower.contains('failed host lookup') ||
+        lower.contains('connection refused') ||
+        lower.contains('connection closed') ||
+        lower.contains('socketexception') ||
+        lower.contains('xmlhttprequest error')) {
+      return 'Não foi possível conectar à API. Verifique se o backend está ativo e a URL configurada.';
+    }
+    if (lower.contains('timeout')) {
+      return 'A API demorou para responder. Tente novamente em instantes.';
+    }
+    if (lower.contains('500') ||
+        lower.contains('internal server error') ||
+        lower.contains('jwt_secret')) {
+      return 'Erro interno no servidor. Confira os logs do backend.';
+    }
+    return msg.isNotEmpty ? msg : 'Falha no login.';
+  }
+
   Future<void> submit() async {
+    setState(() => error = null);
     try {
       await widget.authService.login(emailController.text.trim(), senhaController.text.trim());
       await LoginRememberService.save(
         remember: _rememberMe,
         email: emailController.text.trim(),
+        password: senhaController.text,
       );
       if (!mounted) return;
       widget.onLogin();
     } catch (e) {
-      setState(() => error = 'Falha no login');
+      if (!mounted) return;
+      setState(() => error = _friendlyLoginError(e));
     }
   }
 
@@ -165,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('✈️ Agente Pessoal da Viagem', style: Theme.of(context).textTheme.headlineLarge),
+                      Text('Agente Pessoal da Viagem', style: Theme.of(context).textTheme.headlineLarge),
                       const SizedBox(height: 8),
                       Text(
                         'Acesse sua conta para gerenciar itinerarios, reservas e passeios.',
@@ -195,7 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         contentPadding: EdgeInsets.zero,
                         controlAffinity: ListTileControlAffinity.leading,
                         title: const Text(
-                          'Lembrar e-mail',
+                          'Lembrar usuário e senha',
                           style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
                         ),
                       ),

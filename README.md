@@ -69,6 +69,8 @@ flutter run --dart-define=API_BASE_URL=http://localhost:5000
 
 Sem `API_BASE_URL`, o fallback do código pode apontar para um IP fixo de desenvolvimento — ajuste conforme sua rede.
 
+**Backend em produção (Render):** `https://agente-viagens-api-backend.onrender.com` — usar este valor em `--dart-define=API_BASE_URL=...` e na variável `API_BASE_URL` do Static Site / Netlify.
+
 ### Build Android e Web (release)
 
 Na raiz do projeto (defina a URL pública do backend; use `https` em produção):

@@ -43,6 +43,7 @@ class _RestauranteSearchScreenState extends State<RestauranteSearchScreen> {
   bool loading = true;
   bool locating = false;
   String? errorText;
+  String? locationInfo;
   Position? myPosition;
 
   String? filterTipoComida;
@@ -60,13 +61,23 @@ class _RestauranteSearchScreenState extends State<RestauranteSearchScreen> {
     setState(() => locating = true);
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        if (!mounted) return;
+        setState(() {
+          locationInfo = 'Localização desativada no dispositivo.';
+        });
+        return;
+      }
 
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        setState(() {
+          locationInfo = 'Permissão de localização negada no navegador.';
+        });
         return;
       }
 
@@ -74,7 +85,15 @@ class _RestauranteSearchScreenState extends State<RestauranteSearchScreen> {
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
       if (!mounted) return;
-      setState(() => myPosition = pos);
+      setState(() {
+        myPosition = pos;
+        locationInfo = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        locationInfo = 'Não foi possível obter localização. Verifique permissão do site e HTTPS.';
+      });
     } finally {
       if (mounted) setState(() => locating = false);
     }
@@ -267,6 +286,22 @@ class _RestauranteSearchScreenState extends State<RestauranteSearchScreen> {
                                       ),
                                     ),
                                 ],
+                              ),
+                              if (locationInfo != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  locationInfo!,
+                                  style: const TextStyle(fontSize: 12, color: AppColors.errorRed),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: OutlinedButton.icon(
+                                  onPressed: locating ? null : _resolveMyLocation,
+                                  icon: const Icon(Icons.my_location_rounded, size: 16),
+                                  label: const Text('Ativar localização'),
+                                ),
                               ),
                             ],
                           ),

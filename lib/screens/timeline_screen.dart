@@ -330,6 +330,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   Widget _blocoCard(Map<String, dynamic> block) {
     final type = (block['tipo'] ?? '').toString();
+    final passeioId = block['passeio_id'];
+    final isLinkedToPasseio = passeioId != null && passeioId.toString().trim().isNotEmpty;
     final start = _formatTime(block['hora_inicio']);
     final end = _formatTime(block['hora_fim']);
     final local = (block['local'] ?? '').toString();
@@ -361,6 +363,32 @@ class _TimelineScreenState extends State<TimelineScreen> {
               ),
             ],
           ),
+          if (isLinkedToPasseio) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFF10B981), width: 1),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.link_rounded, size: 14, color: Color(0xFF047857)),
+                  SizedBox(width: 6),
+                  Text(
+                    'Vinculado a passeio',
+                    style: TextStyle(
+                      color: Color(0xFF047857),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Text('${start.isNotEmpty ? start : '--:--'}${end.isNotEmpty ? ' - $end' : ''}'),
           if (local.isNotEmpty) ...[

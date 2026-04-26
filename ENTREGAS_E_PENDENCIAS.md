@@ -106,3 +106,22 @@
 ---
 
 *Este documento deve ser atualizado sempre que uma entrega relevante fechar ou o backlog mudar de prioridade.*
+
+### 3.5 Transportes (novo direcionamento para próxima iteração)
+
+**Atualização:** 25/04/2026
+
+Direcionamento acordado para resolver conexões no módulo de transportes:
+
+- Introduzir uma entidade de **reserva de transporte** (pai) identificada por localizador.
+- Tratar cada conexão/perna como **trecho** vinculado à reserva.
+- Manter assentos em nível de trecho para voo/trem.
+- Agrupar visualmente na UI por localizador, com resumo do primeiro trecho para facilitar identificação.
+
+Impacto esperado por tipo:
+
+- **Voo:** passa a suportar múltiplos trechos e assentos distintos por conexão.
+- **Trem:** suporta conexões sob mesmo localizador quando necessário.
+- **Carro:** mantém fluxo simples (reserva única com trecho único na maioria dos casos).
+
+Situação: **planejado** para implementação no próximo ciclo de chat (ainda não implementado no código nesta revisão de documentação).

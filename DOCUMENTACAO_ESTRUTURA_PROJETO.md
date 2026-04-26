@@ -89,6 +89,8 @@ Este documento descreve a **arquitetura em alto nível**, as **tecnologias** uti
 | **Neon** (ou similar) | PostgreSQL gerido na nuvem. |
 | **Netlify / Render Static** | Servir ficheiros estáticos do `flutter build web`. |
 
+**URL de referência do API em produção (este projeto):** `https://agente-viagens-api-backend.onrender.com` (configurar como `API_BASE_URL` nos builds Flutter Web/Android e no painel do Static Site).
+
 Ficheiros de apoio na raiz: `render.yaml`, `scripts/render-build-web.sh`, `web/_redirects`.
 
 ---

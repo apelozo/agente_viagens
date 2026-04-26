@@ -9,7 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_screen_chrome.dart';
 import 'city_detail_screen.dart';
-import 'meio_transporte_form_screen.dart';
+import 'meio_transporte_form_screen_v2.dart';
 import 'places_search_results_screen.dart';
 import 'restaurante_search_screen.dart';
 import 'timeline_screen.dart';
@@ -81,7 +81,32 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   DetailSection selected = DetailSection.cidades;
   List<Map<String, dynamic>> cidades = [];
   List<Map<String, dynamic>> _meiosTransporte = [];
+  String _filtroTipoTransporte = 'todos';
+  String _filtroCiaAerea = 'todas';
+  String? _transportesLoadError;
   bool loading = true;
+  static const List<String> _ciasAereasFiltro = <String>[
+    'Air Canada',
+    'Air France',
+    'American Airlines',
+    'Azul',
+    'British Airways',
+    'Copa Airlines',
+    'Emirates',
+    'Gol',
+    'Iberia',
+    'Ita Airways',
+    'KLM',
+    'Latam',
+    'Lufthansa',
+    'Qantas',
+    'Qatar',
+    'Swiss',
+    'TAP',
+    'Turkish Airlines',
+    'United',
+    'Outras',
+  ];
 
   StreamSubscription<RealtimePush>? _realtimeSub;
 
@@ -411,8 +436,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           as List<dynamic>;
       _meiosTransporte =
           mtData.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
+      _transportesLoadError = null;
+    } catch (e) {
       _meiosTransporte = [];
+      _transportesLoadError = 'Falha ao carregar transportes: $e';
     }
     if (mounted) setState(() => loading = false);
   }
@@ -450,7 +477,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => MeioTransporteFormScreen(
+        builder: (_) => MeioTransporteFormScreenV2(
           api: widget.api,
           viagemId: widget.viagem.id,
           item: m,
@@ -461,9 +488,81 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   }
 
   Widget _buildTransportesPanel() {
-    if (_meiosTransporte.isEmpty) {
-      return ListView(
-        children: [
+    final filtradosPorTipo = _filtroTipoTransporte == 'todos'
+        ? _meiosTransporte
+        : _meiosTransporte
+            .where((m) => (m['tipo'] ?? '').toString() == _filtroTipoTransporte)
+            .toList();
+    final transportesFiltrados =
+        _filtroTipoTransporte == 'voo' && _filtroCiaAerea != 'todas'
+            ? filtradosPorTipo
+                .where((m) =>
+                    (m['companhia'] ?? '').toString().trim() == _filtroCiaAerea)
+                .toList()
+            : filtradosPorTipo;
+
+    return ListView(
+      children: [
+        DropdownButtonFormField<String>(
+          initialValue: _filtroTipoTransporte,
+          decoration: const InputDecoration(
+            labelText: 'Filtrar por tipo',
+          ),
+          items: const [
+            DropdownMenuItem(value: 'todos', child: Text('Todos')),
+            DropdownMenuItem(value: 'voo', child: Text('Voo')),
+            DropdownMenuItem(value: 'carro', child: Text('Carro')),
+            DropdownMenuItem(value: 'trem', child: Text('Trem')),
+          ],
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() {
+              _filtroTipoTransporte = v;
+              if (_filtroTipoTransporte != 'voo') {
+                _filtroCiaAerea = 'todas';
+              }
+            });
+          },
+        ),
+        if (_filtroTipoTransporte == 'voo') ...[
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: _filtroCiaAerea,
+            decoration: const InputDecoration(
+              labelText: 'Filtrar por companhia aérea',
+            ),
+            items: [
+              const DropdownMenuItem(value: 'todas', child: Text('Todas')),
+              ..._ciasAereasFiltro.map(
+                (cia) => DropdownMenuItem(
+                  value: cia,
+                  child: Text(cia),
+                ),
+              ),
+            ],
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() => _filtroCiaAerea = v);
+            },
+          ),
+        ],
+        const SizedBox(height: 12),
+        if (_transportesLoadError != null) ...[
+          Text(
+            _transportesLoadError!,
+            style: const TextStyle(
+              color: AppColors.errorRed,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        const Text(
+          'Edite pelo ícone de lápis (como nas cidades). Use + para adicionar outro meio de transporte.',
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        if (_meiosTransporte.isEmpty)
           Card(
             margin: EdgeInsets.zero,
             child: Padding(
@@ -483,23 +582,27 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               ),
             ),
           ),
-        ],
-      );
-    }
-
-    return ListView(
-      children: [
-        const Text(
-          'Edite pelo ícone de lápis (como nas cidades). Use + para adicionar outro meio de transporte.',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.4),
-        ),
-        const SizedBox(height: 12),
-        ..._meiosTransporte.map((m) {
+        if (transportesFiltrados.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'Nenhum transporte encontrado para o filtro selecionado.',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+        ...transportesFiltrados.map((m) {
           final tipo = m['tipo']?.toString();
           final comp = asText(m['companhia']);
           final cod = asText(m['codigo_localizador']);
+          final obs = asText(m['observacoes']);
           final a = asText(m['ponto_a']);
           final b = asText(m['ponto_b']);
+          final trechos = m['trechos'] is List
+              ? (m['trechos'] as List)
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList()
+              : <Map<String, dynamic>>[];
           final assentos = m['assentos'];
           return Card(
             margin: const EdgeInsets.only(bottom: 10),
@@ -549,44 +652,134 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         style: const TextStyle(
                             color: Color(0xFF475569), fontSize: 13)),
                   ],
-                  const SizedBox(height: 8),
-                  Text('$a → $b',
+                  if (obs.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Observações: $obs',
                       style: const TextStyle(
-                          color: Color(0xFF334155),
-                          fontSize: 14,
-                          height: 1.35)),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Saída/retirada: ${_resumoDataHoraPar(m, 'a')} · Chegada/devolução: ${_resumoDataHoraPar(m, 'b')}',
-                    style: TextStyle(
+                        color: Color(0xFF475569),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                  if (trechos.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text('$a → $b',
+                        style: const TextStyle(
+                            color: Color(0xFF334155),
+                            fontSize: 14,
+                            height: 1.35)),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Saída/retirada: ${_resumoDataHoraPar(m, 'a')} · Chegada/devolução: ${_resumoDataHoraPar(m, 'b')}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.neutralGray.withValues(alpha: 0.95)),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Trechos',
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.neutralGray.withValues(alpha: 0.95)),
-                  ),
-                  if (assentos is List &&
-                      assentos.isNotEmpty &&
-                      (tipo == 'voo' || tipo == 'trem')) ...[
-                    const SizedBox(height: 10),
-                    const Text('Assentos',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primaryBlue,
-                            fontSize: 12)),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryBlue,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    ...assentos.map((raw) {
-                      if (raw is! Map) return const SizedBox.shrink();
-                      final am = Map<String, dynamic>.from(raw);
-                      final nume = asText(am['numero_assento']);
-                      final nom = asText(am['nome_passageiro']);
-                      final cl = _classeLabel(am['classe']?.toString());
+                    ...trechos.asMap().entries.map((entry) {
+                      final idx = entry.key + 1;
+                      final trecho = entry.value;
+                      final tA = asText(trecho['ponto_a']);
+                      final tB = asText(trecho['ponto_b']);
+                      final saida = _resumoDataHoraPar(trecho, 'a');
+                      final chegada = _resumoDataHoraPar(trecho, 'b');
                       return Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          '• $nume — $nom ($cl)',
+                          '$idx. $tA → $tB\nSaída/retirada: $saida · Chegada/devolução: $chegada',
                           style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF475569)),
+                            color: Color(0xFF334155),
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
                         ),
                       );
                     }),
+                  ],
+                  if (tipo == 'voo' || tipo == 'trem') ...[
+                    if (trechos.isNotEmpty) ...[
+                      ...trechos.asMap().entries.map((entry) {
+                        final idx = entry.key + 1;
+                        final trecho = entry.value;
+                        final trechoAssentos = trecho['assentos'];
+                        if (trechoAssentos is! List || trechoAssentos.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Assentos do trecho $idx',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primaryBlue,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              ...trechoAssentos.map((raw) {
+                                if (raw is! Map) return const SizedBox.shrink();
+                                final am = Map<String, dynamic>.from(raw);
+                                final nume = asText(am['numero_assento']);
+                                final nom = asText(am['nome_passageiro']);
+                                final cl = _classeLabel(am['classe']?.toString());
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    '• $nume — $nom ($cl)',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        );
+                      }),
+                    ] else if (assentos is List && assentos.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Assentos',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryBlue,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...assentos.map((raw) {
+                        if (raw is! Map) return const SizedBox.shrink();
+                        final am = Map<String, dynamic>.from(raw);
+                        final nume = asText(am['numero_assento']);
+                        final nom = asText(am['nome_passageiro']);
+                        final cl = _classeLabel(am['classe']?.toString());
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '• $nume — $nom ($cl)',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
                   ],
                 ],
               ),
@@ -879,7 +1072,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                               selected: <DetailSection>{selected},
                               onSelectionChanged: (Set<DetailSection> next) {
                                 if (next.isEmpty) return;
-                                setState(() => selected = next.first);
+                                setState(() {
+                                  selected = next.first;
+                                  if (selected == DetailSection.transportes) {
+                                    // Evita "sumiço" de itens por filtros antigos.
+                                    _filtroTipoTransporte = 'todos';
+                                    _filtroCiaAerea = 'todas';
+                                  }
+                                });
                               },
                             ),
                             const SizedBox(height: 14),
@@ -936,7 +1136,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     final ok = await Navigator.push<bool>(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => MeioTransporteFormScreen(
+                        builder: (_) => MeioTransporteFormScreenV2(
                           api: widget.api,
                           viagemId: widget.viagem.id,
                         ),
@@ -1113,8 +1313,9 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   String get title {
     if (isCidade) return widget.item == null ? 'Nova Cidade' : 'Editar Cidade';
     if (isHotel) return widget.item == null ? 'Novo Hotel' : 'Editar Hotel';
-    if (isRestaurante)
+    if (isRestaurante) {
       return widget.item == null ? 'Novo Restaurante' : 'Editar Restaurante';
+    }
     return widget.item == null
         ? 'Novo Passeio/Ingresso'
         : 'Editar Passeio/Ingresso';
@@ -1344,8 +1545,8 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
         child: SafeArea(
           child: FocusTraversalGroup(
             child: Shortcuts(
-              shortcuts: <ShortcutActivator, Intent>{
-                const SingleActivator(LogicalKeyboardKey.enter): const NextFocusIntent(),
+              shortcuts: const <ShortcutActivator, Intent>{
+                SingleActivator(LogicalKeyboardKey.enter): NextFocusIntent(),
               },
               child: Actions(
                 actions: <Type, Action<Intent>>{

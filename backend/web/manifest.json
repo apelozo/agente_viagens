@@ -1,0 +1,9 @@
+{
+  "name": "Agente Pessoal da Viagem",
+  "short_name": "Agente Viagem",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0055CC",
+  "theme_color": "#0055CC",
+  "description": "Sistema Agente Pessoal da Viagem"
+}

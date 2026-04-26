@@ -238,3 +238,29 @@ Ainda **nÃ£o** estÃ£o no escopo atual do cÃ³digo (ou sÃ³ parcialmente no plano):
 - PostGIS / geoespacial avanÃ§ado no banco
 
 Para detalhamento de fases futuras, usar `PLANO_EVOLUCAO_V2.md`.
+
+---
+
+## 13) Decisão de arquitetura em discussão: Transportes (conexões por localizador)
+
+**Atualização:** 25/04/2026
+
+Para suportar cenários de voo com múltiplas conexões (inclusive com companhias diferentes no mesmo localizador), a proposta priorizada para a próxima iteração é introduzir uma entidade de **reserva** acima dos trechos:
+
+- Nova entidade pai: `viagem_reservas_transporte` (ou nome equivalente) com `viagem_id`, `tipo`, `codigo_localizador` e metadados da reserva.
+- A tabela de trechos (`viagem_meios_transporte`) passa a representar cada perna/segmento e referencia a reserva pai (`reserva_id`).
+- Assentos continuam por trecho em `viagem_meio_transporte_assentos` (não por reserva), permitindo classes/assentos diferentes por conexão.
+
+Impacto funcional esperado por tipo:
+
+- **Voo:** uma reserva pode ter múltiplos trechos e assentos distintos por trecho (principal ganho da mudança).
+- **Trem:** suporta um ou mais trechos sob o mesmo localizador quando houver conexão.
+- **Carro:** continua simples (tipicamente 1 reserva -> 1 trecho retirada/devolução).
+
+Impacto de UX previsto:
+
+- Listagem de transportes agrupada por localizador/reserva.
+- Cartão de reserva com resumo de “algum trecho” (ex.: `GRU -> MIA`) para identificação visual rápida.
+- Expansão para visualizar todos os trechos da reserva e ações de editar/excluir por trecho.
+
+Nota: os dados existentes são poucos e podem ser recriados manualmente, reduzindo risco de migração complexa.

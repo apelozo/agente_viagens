@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS viagem_meios_transporte (
   tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('voo', 'carro', 'trem')),
   companhia TEXT,
   codigo_localizador TEXT,
+  observacoes TEXT,
   ponto_a TEXT,
   ponto_b TEXT,
   data_a DATE,
@@ -225,8 +226,46 @@ CREATE TABLE IF NOT EXISTS viagem_meio_transporte_assentos (
 CREATE INDEX IF NOT EXISTS idx_viagem_meios_transporte_viagem ON viagem_meios_transporte(viagem_id);
 CREATE INDEX IF NOT EXISTS idx_viagem_meio_assentos_meio ON viagem_meio_transporte_assentos(meio_transporte_id);
 
+-- Modelo v2 de transportes: reserva (pai) + trechos + assentos por trecho.
+CREATE TABLE IF NOT EXISTS viagem_reservas_transporte (
+  id SERIAL PRIMARY KEY,
+  viagem_id INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+  tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('voo', 'carro', 'trem')),
+  companhia TEXT,
+  codigo_localizador TEXT,
+  observacoes TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS viagem_reserva_trechos (
+  id SERIAL PRIMARY KEY,
+  reserva_id INTEGER NOT NULL REFERENCES viagem_reservas_transporte(id) ON DELETE CASCADE,
+  ordem INTEGER NOT NULL DEFAULT 1,
+  ponto_a TEXT,
+  ponto_b TEXT,
+  data_a DATE,
+  hora_a TIME,
+  data_b DATE,
+  hora_b TIME
+);
+
+CREATE TABLE IF NOT EXISTS viagem_reserva_trecho_assentos (
+  id SERIAL PRIMARY KEY,
+  trecho_id INTEGER NOT NULL REFERENCES viagem_reserva_trechos(id) ON DELETE CASCADE,
+  numero_assento TEXT NOT NULL,
+  nome_passageiro TEXT NOT NULL,
+  classe VARCHAR(30) NOT NULL CHECK (classe IN ('economica', 'economica_premium', 'executiva', 'primeira'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_viagem_reservas_transporte_viagem ON viagem_reservas_transporte(viagem_id);
+CREATE INDEX IF NOT EXISTS idx_viagem_reserva_trechos_reserva ON viagem_reserva_trechos(reserva_id);
+CREATE INDEX IF NOT EXISTS idx_viagem_reserva_trechos_ordem ON viagem_reserva_trechos(reserva_id, ordem);
+CREATE INDEX IF NOT EXISTS idx_viagem_reserva_trecho_assentos_trecho ON viagem_reserva_trecho_assentos(trecho_id);
+
 -- Migração: bases criadas antes (TIMESTAMPTZ + sem companhia)
 ALTER TABLE viagem_meios_transporte ADD COLUMN IF NOT EXISTS companhia TEXT;
+ALTER TABLE viagem_meios_transporte ADD COLUMN IF NOT EXISTS observacoes TEXT;
+ALTER TABLE viagem_reservas_transporte ADD COLUMN IF NOT EXISTS observacoes TEXT;
 DO $$
 BEGIN
   IF EXISTS (
@@ -239,6 +278,91 @@ BEGIN
         CASE WHEN horario_a IS NULL THEN NULL
         ELSE to_char(horario_a, 'DD/MM/YYYY HH24:MI') END
       );
+  END IF;
+END $$;
+
+-- Migração para o modelo v2: converte dados legados para reserva+trecho sem perder registros já existentes.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'viagem_meios_transporte'
+  ) THEN
+    INSERT INTO viagem_reservas_transporte (id, viagem_id, tipo, companhia, codigo_localizador, observacoes, created_at)
+    SELECT id, viagem_id, tipo, companhia, codigo_localizador, observacoes, created_at
+    FROM viagem_meios_transporte
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'viagem_meios_transporte'
+  ) THEN
+    INSERT INTO viagem_reservas_transporte (viagem_id, tipo, companhia, codigo_localizador, observacoes, created_at)
+    SELECT m.viagem_id, m.tipo, m.companhia, m.codigo_localizador, m.observacoes, m.created_at
+    FROM viagem_meios_transporte m
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM viagem_reservas_transporte r
+      WHERE r.viagem_id = m.viagem_id
+        AND COALESCE(r.tipo, '') = COALESCE(m.tipo, '')
+        AND COALESCE(r.companhia, '') = COALESCE(m.companhia, '')
+        AND COALESCE(r.codigo_localizador, '') = COALESCE(m.codigo_localizador, '')
+        AND COALESCE(r.observacoes, '') = COALESCE(m.observacoes, '')
+        AND COALESCE(r.created_at::text, '') = COALESCE(m.created_at::text, '')
+    );
+
+    INSERT INTO viagem_reserva_trechos (reserva_id, ordem, ponto_a, ponto_b, data_a, hora_a, data_b, hora_b)
+    SELECT r.id, 1, m.ponto_a, m.ponto_b, m.data_a, m.hora_a, m.data_b, m.hora_b
+    FROM viagem_meios_transporte m
+    JOIN viagem_reservas_transporte r ON r.viagem_id = m.viagem_id
+      AND COALESCE(r.tipo, '') = COALESCE(m.tipo, '')
+      AND COALESCE(r.companhia, '') = COALESCE(m.companhia, '')
+      AND COALESCE(r.codigo_localizador, '') = COALESCE(m.codigo_localizador, '')
+      AND COALESCE(r.observacoes, '') = COALESCE(m.observacoes, '')
+      AND COALESCE(r.created_at::text, '') = COALESCE(m.created_at::text, '')
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM viagem_reserva_trechos t
+      WHERE t.reserva_id = r.id AND t.ordem = 1
+    );
+
+    INSERT INTO viagem_reserva_trecho_assentos (trecho_id, numero_assento, nome_passageiro, classe)
+    SELECT
+      t.id,
+      a.numero_assento,
+      a.nome_passageiro,
+      a.classe
+    FROM viagem_meio_transporte_assentos a
+    JOIN viagem_meios_transporte m ON m.id = a.meio_transporte_id
+    JOIN viagem_reservas_transporte r ON r.viagem_id = m.viagem_id
+      AND COALESCE(r.tipo, '') = COALESCE(m.tipo, '')
+      AND COALESCE(r.companhia, '') = COALESCE(m.companhia, '')
+      AND COALESCE(r.codigo_localizador, '') = COALESCE(m.codigo_localizador, '')
+      AND COALESCE(r.observacoes, '') = COALESCE(m.observacoes, '')
+      AND COALESCE(r.created_at::text, '') = COALESCE(m.created_at::text, '')
+    JOIN viagem_reserva_trechos t ON t.reserva_id = r.id AND t.ordem = 1
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM viagem_reserva_trecho_assentos x
+      WHERE x.trecho_id = t.id
+        AND x.numero_assento = a.numero_assento
+        AND x.nome_passageiro = a.nome_passageiro
+        AND x.classe = a.classe
+    );
+
+    PERFORM setval(
+      pg_get_serial_sequence('viagem_reservas_transporte', 'id'),
+      COALESCE((SELECT MAX(id) FROM viagem_reservas_transporte), 1),
+      true
+    );
   END IF;
 END $$;
 DO $$

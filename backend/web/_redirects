@@ -1,0 +1,2 @@
+# Netlify: todas as rotas servem a app Flutter (evita 404 em recarregar ou URLs diretas)
+/*    /index.html   200

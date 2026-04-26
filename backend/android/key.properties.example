@@ -1,0 +1,9 @@
+# Copie para android/key.properties e preencha (key.properties está no .gitignore).
+# Gere o keystore uma vez, por exemplo:
+#   keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+# Coloque upload-keystore.jks em android/app/ (ou ajuste storeFile).
+
+storePassword=defina-uma-senha-forte
+keyPassword=defina-uma-senha-forte
+keyAlias=upload
+storeFile=upload-keystore.jks

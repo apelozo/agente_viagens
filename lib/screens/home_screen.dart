@@ -156,6 +156,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final descricaoCtrl = TextEditingController();
     final iniCtrl = TextEditingController();
     final fimCtrl = TextEditingController();
+    final descricaoFocus = FocusNode();
+    final iniFocus = FocusNode();
+    final fimFocus = FocusNode();
     String situacao = viagem?.situacao ?? 'Ativa';
     if (viagem != null) {
       descricaoCtrl.text = viagem.descricao;
@@ -204,22 +207,34 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('✈️ Nova viagem', style: Theme.of(context).textTheme.titleLarge),
+              Text('Nova viagem', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
-              TextField(controller: descricaoCtrl, decoration: const InputDecoration(labelText: 'Descrição')),
+              TextField(
+                controller: descricaoCtrl,
+                focusNode: descricaoFocus,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: 'Descrição'),
+                onSubmitted: (_) => iniFocus.requestFocus(),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: iniCtrl,
+                focusNode: iniFocus,
+                textInputAction: TextInputAction.next,
                 keyboardType: TextInputType.number,
                 inputFormatters: [DateTextInputFormatter()],
                 decoration: const InputDecoration(labelText: 'Data inicial (DD/MM/AAAA)'),
+                onSubmitted: (_) => fimFocus.requestFocus(),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: fimCtrl,
+                focusNode: fimFocus,
+                textInputAction: TextInputAction.done,
                 keyboardType: TextInputType.number,
                 inputFormatters: [DateTextInputFormatter()],
                 decoration: const InputDecoration(labelText: 'Data final (DD/MM/AAAA)'),
+                onSubmitted: (_) => submit(),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -281,8 +296,40 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> deleteViagem(Viagem viagem) async {
-    await widget.api.deleteRequest('/api/viagens/${viagem.id}');
-    await load();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir viagem'),
+        content: const Text(
+          'Confirma exclusão da viagem e todos os seus cadastros ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      await widget.api.deleteRequest('/api/viagens/${viagem.id}');
+      await load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Viagem excluída com sucesso.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao excluir viagem: $e')),
+      );
+    }
   }
 
   Future<void> _showPendingInvitesOnLogin() async {
@@ -426,11 +473,81 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  DateTime? _tryParseTripDate(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+    final isoMatch = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(value);
+    if (isoMatch != null) {
+      return DateTime(
+        int.parse(isoMatch.group(1)!),
+        int.parse(isoMatch.group(2)!),
+        int.parse(isoMatch.group(3)!),
+      );
+    }
+    final brMatch = RegExp(r'^(\d{2})\/(\d{2})\/(\d{4})$').firstMatch(value);
+    if (brMatch != null) {
+      return DateTime(
+        int.parse(brMatch.group(3)!),
+        int.parse(brMatch.group(2)!),
+        int.parse(brMatch.group(1)!),
+      );
+    }
+    return DateTime.tryParse(value);
+  }
+
+  int _tripPriorityScore(Viagem viagem, DateTime today) {
+    final start = _tryParseTripDate(viagem.dataInicial);
+    final end = _tryParseTripDate(viagem.dataFinal);
+    if (start == null) return 999999;
+
+    final now = DateTime(today.year, today.month, today.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = end == null ? startDay : DateTime(end.year, end.month, end.day);
+
+    // 1) Viagem em andamento sempre tem prioridade máxima.
+    if ((now.isAtSameMomentAs(startDay) || now.isAfter(startDay)) &&
+        (now.isAtSameMomentAs(endDay) || now.isBefore(endDay))) {
+      return 0;
+    }
+
+    // 2) Próxima viagem futura: quanto menor a diferença, melhor.
+    if (startDay.isAfter(now)) {
+      return now.difference(startDay).inDays.abs();
+    }
+
+    // 3) Viagens passadas ficam depois das futuras.
+    return 100000 + now.difference(endDay).inDays.abs();
+  }
+
+  Viagem? _pickClosestTrip(List<Viagem> allTrips) {
+    if (allTrips.isEmpty) return null;
+    final base = DateTime.now();
+    final ordered = [...allTrips];
+    ordered.sort((a, b) {
+      final byScore = _tripPriorityScore(a, base).compareTo(_tripPriorityScore(b, base));
+      if (byScore != 0) return byScore;
+      return a.id.compareTo(b.id);
+    });
+    return ordered.first;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final activeTrips = viagens.where((v) => v.situacao == 'Ativa');
-    final activeTrip = activeTrips.isNotEmpty ? activeTrips.first : (viagens.isNotEmpty ? viagens.first : null);
-    final otherTrips = activeTrip == null ? viagens : viagens.where((v) => v.id != activeTrip.id).toList();
+    final activeTrip = _pickClosestTrip(viagens);
+    final otherTripsRaw = activeTrip == null
+        ? [...viagens]
+        : viagens.where((v) => v.id != activeTrip.id).toList();
+    otherTripsRaw.sort((a, b) {
+      final da = _tryParseTripDate(a.dataInicial);
+      final db = _tryParseTripDate(b.dataInicial);
+      if (da == null && db == null) return a.id.compareTo(b.id);
+      if (da == null) return 1;
+      if (db == null) return -1;
+      final byDate = da.compareTo(db);
+      if (byDate != 0) return byDate;
+      return a.id.compareTo(b.id);
+    });
+    final otherTrips = otherTripsRaw;
 
     return Scaffold(
       floatingActionButton: FloatingActionButton(
@@ -609,16 +726,31 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: status.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                trip.situacao,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: status.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    trip.situacao,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Editar viagem',
+                  onPressed: () => openViagemForm(viagem: trip),
+                  icon: const Icon(Icons.edit_outlined, color: Colors.white),
+                ),
+                IconButton(
+                  tooltip: 'Excluir viagem',
+                  onPressed: () => deleteViagem(trip),
+                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+                ),
+              ],
             ),
           ],
         ),
@@ -669,6 +801,11 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'Editar viagem',
             onPressed: () async => openViagemForm(viagem: v),
             icon: const Icon(Icons.edit_outlined, color: AppColors.accentOrange),
+          ),
+          IconButton(
+            tooltip: 'Excluir viagem',
+            onPressed: () async => deleteViagem(v),
+            icon: const Icon(Icons.delete_outline_rounded, color: AppColors.errorRed),
           ),
           const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
         ],
