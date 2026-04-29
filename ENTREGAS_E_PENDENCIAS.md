@@ -1,6 +1,6 @@
 # Entregas realizadas e trabalho pendente
 
-**Ãšltima atualizaÃ§Ã£o:** 16/04/2026  
+**Ãšltima atualizaÃ§Ã£o:** 27/04/2026  
 **Objetivo:** registo Ãºnico do que jÃ¡ foi implementado no projeto e do que continua em aberto, alinhado a `DOCUMENTACAO_ATUAL.md` e `PLANO_EVOLUCAO_V2.md`.
 
 ---
@@ -15,6 +15,7 @@
 | SugestÃµes para blocos de tempo livre + preferÃªncias por viagem | Entregue (v1 por regras) |
 | Proxy Google Places e Distance Matrix no backend | Entregue |
 | WebSocket: servidor com broadcast; cliente Flutter conecta e reage em vÃ¡rias telas | Entregue (sem tÃ³picos por viagem) |
+| Documentos por viagem (upload PDF no Google Drive, abrir e excluir) | Entregue |
 | Identidade visual unificada (gradiente, AppBar, tokens, telas) | Entregue |
 | Estimativa de deslocamento na timeline (entre eventos fixos) | Entregue com cÃ¡lculo **sob demanda** (Ã­cone); **sem** chamadas API em trechos com tempo livre |
 | Fase C (prÃ³ximo marco de produto) | **NÃ£o iniciada** â€” definir escopo no backlog |
@@ -31,6 +32,9 @@
 - Controllers para viagens, timeline, wishlist, sugestÃµes, Places, distÃ¢ncia.
 - WebSocket (`ws`) no mesmo processo HTTP, broadcast de eventos de CRUD.
 - Regras de acesso: utilizador vÃª sÃ³ as suas viagens; agente vÃª tambÃ©m viagens de clientes ligados em `agente_clientes`.
+- Documentos por viagem com upload de PDF (`multipart`) para Google Drive e metadados em `viagem_documentos`.
+- Fluxo OAuth no backend para Google Drive (`/api/drive/oauth/start` e `/api/drive/oauth/callback`) para conta pessoal.
+- CORS de produÃ§Ã£o por lista de origens via `CORS_ALLOWED_ORIGINS`.
 
 ### 2.2 Frontend (Flutter)
 
@@ -107,21 +111,75 @@
 
 *Este documento deve ser atualizado sempre que uma entrega relevante fechar ou o backlog mudar de prioridade.*
 
-### 3.5 Transportes (novo direcionamento para próxima iteração)
+### 3.5 Transportes (novo direcionamento para prï¿½xima iteraï¿½ï¿½o)
 
-**Atualização:** 25/04/2026
+**Atualizaï¿½ï¿½o:** 25/04/2026
 
-Direcionamento acordado para resolver conexões no módulo de transportes:
+Direcionamento acordado para resolver conexï¿½es no mï¿½dulo de transportes:
 
 - Introduzir uma entidade de **reserva de transporte** (pai) identificada por localizador.
-- Tratar cada conexão/perna como **trecho** vinculado à reserva.
-- Manter assentos em nível de trecho para voo/trem.
-- Agrupar visualmente na UI por localizador, com resumo do primeiro trecho para facilitar identificação.
+- Tratar cada conexï¿½o/perna como **trecho** vinculado ï¿½ reserva.
+- Manter assentos em nï¿½vel de trecho para voo/trem.
+- Agrupar visualmente na UI por localizador, com resumo do primeiro trecho para facilitar identificaï¿½ï¿½o.
 
 Impacto esperado por tipo:
 
-- **Voo:** passa a suportar múltiplos trechos e assentos distintos por conexão.
-- **Trem:** suporta conexões sob mesmo localizador quando necessário.
-- **Carro:** mantém fluxo simples (reserva única com trecho único na maioria dos casos).
+- **Voo:** passa a suportar mï¿½ltiplos trechos e assentos distintos por conexï¿½o.
+- **Trem:** suporta conexï¿½es sob mesmo localizador quando necessï¿½rio.
+- **Carro:** mantï¿½m fluxo simples (reserva ï¿½nica com trecho ï¿½nico na maioria dos casos).
 
-Situação: **planejado** para implementação no próximo ciclo de chat (ainda não implementado no código nesta revisão de documentação).
+Situacao: **implementado** no codigo em 26/04/2026.
+
+---
+
+## 5. Atualizacao 26/04/2026 (consolidacao)
+
+### 5.1 Entregas concluidas neste ciclo
+
+- Refatoracao de transportes para modelo de **reserva + trechos + assentos por trecho**.
+- Campo `observacoes` adicionado no nivel da reserva de transporte.
+- Formulario de transportes v2 no Flutter com:
+  - multiplos trechos para voo/trem
+  - fluxo simples para carro
+  - lista fixa de companhias aereas para voo
+  - Enter para avancar foco e salvar no ultimo campo.
+- Listagem de transportes com:
+  - filtro por tipo
+  - filtro por companhia aerea (apenas quando tipo = voo)
+  - exibicao de trechos, assentos por trecho e observacoes
+  - reset de filtros ao abrir aba de transportes.
+- Home/dashboard:
+  - viagem principal selecionada pela mais proxima (regra por data)
+  - demais viagens ordenadas por data inicial
+  - exclusao de viagem com confirmacao.
+
+### 5.2 Ajustes operacionais e deploy
+
+- CORS ajustado para producao no backend.
+- Processo de deploy reforcado:
+  1) push do backend
+  2) deploy no Render
+  3) execucao de `npm run db:init` no ambiente da API
+  4) validacao por endpoint (`/api/viagens/:id/meios-transporte`).
+
+### 5.3 Riscos residuais
+
+- Divergencia entre frontend deployado e backend deployado pode mascarar funcionalidades novas.
+- Divergencia de `DATABASE_URL` entre ambiente esperado e ambiente em execucao pode causar leitura parcial.
+
+---
+
+## 6. AtualizaÃ§Ã£o 27/04/2026
+
+- **Listagem de transportes** (`trip_detail_screen.dart`): companhia e localizador na **mesma linha** (localizador Ã  direita), tipografia igual entre os dois em destaque; valores de **data e hora** de saÃ­da/chegada em **negrito**.
+- **CORS** (`backend/server.js`): em **desenvolvimento** (`NODE_ENV` diferente de `production`), aceita qualquer origem (`origin: true`); em **produÃ§Ã£o**, mantÃ©m lista restrita de domÃ­nios.
+
+---
+
+## 7. AtualizaÃ§Ã£o 29/04/2026
+
+- **Documentos da viagem**: nova aba no detalhe da viagem com listagem simplificada (`tipo_arquivo` e `observacao`).
+- **Upload real de PDF**: envio de arquivo local (desktop/mobile) para Google Drive, com subpasta automÃ¡tica por viagem (`viagem_<id>`).
+- **Google OAuth**: autorizaÃ§Ã£o via conta Google pessoal implementada no backend (`/api/drive/oauth/start` e `/api/drive/oauth/callback`).
+- **Abertura e exclusÃ£o**: clique no tipo abre o documento; exclusÃ£o remove registro no banco e tenta remover o arquivo no Drive.
+- **CORS de produÃ§Ã£o**: backend passou a usar `CORS_ALLOWED_ORIGINS` (lista por vÃ­rgula) para origens permitidas.

@@ -1,10 +1,15 @@
 const express = require("express");
+const multer = require("multer");
 const controller = require("../controllers/viagensController");
 const meiosTransporteController = require("../controllers/meiosTransporteController");
 const { authRequired } = require("../middleware/auth");
 
 const router = express.Router();
 const validEntities = ["cidades", "hoteis", "restaurantes", "passeios"];
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 router.use(authRequired);
 router.get("/", controller.listViagens);
@@ -22,6 +27,11 @@ router.get("/:viagemId/meios-transporte", meiosTransporteController.listMeiosTra
 router.post("/:viagemId/meios-transporte", meiosTransporteController.createMeioTransporte);
 router.put("/:viagemId/meios-transporte/:mtId", meiosTransporteController.updateMeioTransporte);
 router.delete("/:viagemId/meios-transporte/:mtId", meiosTransporteController.deleteMeioTransporte);
+router.get("/:viagemId/documentos", controller.listDocumentos);
+router.post("/:viagemId/documentos", controller.createDocumento);
+router.post("/:viagemId/documentos/upload", upload.single("arquivo"), controller.uploadDocumento);
+router.get("/:viagemId/documentos/:documentoId/open", controller.openDocumento);
+router.delete("/:viagemId/documentos/:documentoId", controller.deleteDocumento);
 
 router.get("/:entity/:parentId", (req, res, next) => {
   if (!validEntities.includes(req.params.entity)) return res.status(400).json({ message: "Entidade inválida." });

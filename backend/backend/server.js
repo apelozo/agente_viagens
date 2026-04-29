@@ -15,14 +15,17 @@ const timelineController = require("./controllers/timelineController");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const suggestionsRoutes = require("./routes/suggestionsRoutes");
 const mobilityRoutes = require("./routes/mobilityRoutes");
+const driveRoutes = require("./routes/driveRoutes");
 const { authRequired } = require("./middleware/auth");
 
 const app = express();
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "https://agentepessoaldaviagem.netlify.app")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const corsOptions = {
-  // Produção (Netlify):
-  origin: "https://agentepessoaldaviagem.netlify.app",
-  // Desenvolvimento (libera geral para testes locais):
-  // origin: true,
+  // Produção: permitir apenas origens explicitamente autorizadas.
+  origin: allowedOrigins,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
   optionsSuccessStatus: 204
@@ -47,6 +50,7 @@ app.use("/api/timeline", timelineRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/suggestions", suggestionsRoutes);
 app.use("/api/mobility", mobilityRoutes);
+app.use("/api/drive", driveRoutes);
 app.use(errorHandler);
 
 const server = http.createServer(app);

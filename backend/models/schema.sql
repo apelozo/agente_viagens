@@ -34,6 +34,29 @@ CREATE TABLE IF NOT EXISTS viagem_membros (
   UNIQUE (viagem_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS viagem_documentos (
+  id SERIAL PRIMARY KEY,
+  viagem_id INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+  uploaded_by_user_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  tipo_arquivo VARCHAR(120) NOT NULL,
+  observacao TEXT NOT NULL,
+  arquivo_url TEXT NOT NULL,
+  drive_file_id TEXT,
+  drive_folder_id TEXT,
+  mime_type TEXT,
+  size_bytes BIGINT,
+  original_file_name TEXT,
+  web_view_link TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
+ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS drive_folder_id TEXT;
+ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS mime_type TEXT;
+ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS size_bytes BIGINT;
+ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS original_file_name TEXT;
+ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS web_view_link TEXT;
+
 CREATE TABLE IF NOT EXISTS convites_viagem (
   id SERIAL PRIMARY KEY,
   viagem_id INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
@@ -150,6 +173,8 @@ ADD COLUMN IF NOT EXISTS link_url TEXT;
 CREATE INDEX IF NOT EXISTS idx_viagens_user_id ON viagens(user_id);
 CREATE INDEX IF NOT EXISTS idx_viagem_membros_viagem_id ON viagem_membros(viagem_id);
 CREATE INDEX IF NOT EXISTS idx_viagem_membros_user_id ON viagem_membros(user_id);
+CREATE INDEX IF NOT EXISTS idx_viagem_documentos_viagem_id ON viagem_documentos(viagem_id);
+CREATE INDEX IF NOT EXISTS idx_viagem_documentos_created_at ON viagem_documentos(created_at);
 CREATE INDEX IF NOT EXISTS idx_convites_viagem_token ON convites_viagem(token);
 CREATE INDEX IF NOT EXISTS idx_cidades_viagem_id ON cidades(viagem_id);
 CREATE INDEX IF NOT EXISTS idx_hoteis_cidade_id ON hoteis(cidade_id);

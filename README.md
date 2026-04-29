@@ -29,6 +29,12 @@ SMTP_USER=
 SMTP_PASS=
 MAIL_FROM=
 APP_BASE_URL=http://localhost:5000
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:5000/api/drive/oauth/callback
+GOOGLE_OAUTH_TOKEN_PATH=.drive-oauth-token.json
+DRIVE_PARENT_FOLDER_ID=
+CORS_ALLOWED_ORIGINS=https://agentepessoaldaviagem.netlify.app
 ```
 
 Chaves Google não são embutidas no app; apenas o backend chama as APIs.
@@ -176,6 +182,25 @@ Cria o repositório vazio em [github.com/new](https://github.com/new) antes do `
 - `GET /api/suggestions/preferences/:viagemId`
 - `PUT /api/suggestions/preferences/:viagemId`
 
+**Transportes** (JWT)
+
+- `GET /api/viagens/:viagemId/meios-transporte`
+- `POST /api/viagens/:viagemId/meios-transporte`
+- `PUT /api/viagens/:viagemId/meios-transporte/:mtId`
+- `DELETE /api/viagens/:viagemId/meios-transporte/:mtId`
+
+**Documentos** (JWT)
+
+- `GET /api/viagens/:viagemId/documentos`
+- `POST /api/viagens/:viagemId/documentos/upload` (multipart; campo `arquivo`, apenas PDF até 20MB)
+- `GET /api/viagens/:viagemId/documentos/:documentoId/open`
+- `DELETE /api/viagens/:viagemId/documentos/:documentoId`
+
+**Google Drive OAuth**
+
+- `GET /api/drive/oauth/start`
+- `GET /api/drive/oauth/callback`
+
 **Health**
 
 - `GET /health`
@@ -203,3 +228,40 @@ Legado / referência: **`Documentação Sistema/Ponto de Restauração v1.1.md`*
 
 - `http` — cliente REST
 - `flutter_map` / `latlong2` — mapa da wishlist
+
+## Atualizacao 27/04/2026
+
+- Listagem de transportes: companhia e localizador na mesma linha (destaque igual); datas/horas em negrito nos resumos de trecho.
+- CORS em desenvolvimento (`NODE_ENV` diferente de `production`): aceita qualquer origem para facilitar Flutter Web/local; producao mantém lista restrita (`backend/server.js`).
+
+## Atualizacao 29/04/2026
+
+- Modulo de **Documentos da viagem** implementado na aba da viagem (campos `tipo_arquivo` e `observacao`, upload de PDF e exclusao).
+- Upload real de PDF para Google Drive com subpasta por viagem (`viagem_<id>`) dentro da pasta pai configurada por `DRIVE_PARENT_FOLDER_ID`.
+- Fluxo OAuth do Google Drive no backend (`/api/drive/oauth/start` e `/api/drive/oauth/callback`) para uso com conta Google pessoal.
+- Novos endpoints de documentos: listar, upload, abrir e excluir.
+- CORS ajustado para **origens restritas** por `CORS_ALLOWED_ORIGINS` (separadas por vírgula).
+
+## Atualizacao 26/04/2026
+
+- Transportes migrados para modelo de reserva + trechos.
+- Campo `observacoes` em reserva de transporte.
+- Formulario Flutter de transportes atualizado (`meio_transporte_form_screen_v2`).
+- Filtros na listagem de transportes:
+  - tipo (todos/voo/carro/trem)
+  - companhia aerea (somente quando tipo = voo).
+- Home:
+  - destaque da viagem mais proxima
+  - ordenacao das demais por data inicial
+  - exclusao de viagem com confirmacao.
+
+### Deploy seguro backend (producao)
+
+Depois de deploy da API, execute:
+
+```bash
+cd backend
+npm run db:init
+```
+
+Isto garante aplicacao de alteracoes de schema/migracoes no banco de producao.

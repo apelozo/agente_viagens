@@ -2,6 +2,7 @@ const db = require("../services/databaseService");
 const viagemModel = require("../models/viagemModel");
 const { broadcast } = require("../services/websocketService");
 const { sendMail } = require("../services/emailService");
+const { uploadPdfToTripFolder, deleteDriveFile } = require("../services/googleDriveService");
 const crypto = require("crypto");
 
 const TABLES = {
@@ -396,6 +397,174 @@ async function updateMember(req, res, next) {
   }
 }
 
+async function listDocumentos(req, res, next) {
+  try {
+    const viagemId = Number(req.params.viagemId);
+    const canAccess = await viagemModel.userCanAccessViagem(req.user, viagemId);
+    if (!canAccess) return res.status(404).json({ message: "Viagem não encontrada." });
+
+    const result = await db.query(
+      `SELECT id, viagem_id, tipo_arquivo, observacao, arquivo_url, created_at
+       FROM viagem_documentos
+       WHERE viagem_id = $1
+       ORDER BY created_at DESC, id DESC`,
+      [viagemId]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function createDocumento(req, res, next) {
+  try {
+    const viagemId = Number(req.params.viagemId);
+    const canAccess = await viagemModel.userCanAccessViagem(req.user, viagemId);
+    if (!canAccess) return res.status(404).json({ message: "Viagem não encontrada." });
+
+    const tipoArquivo = (req.body?.tipo_arquivo || "").toString().trim();
+    const observacao = (req.body?.observacao || "").toString().trim();
+    const arquivoUrl = (req.body?.arquivo_url || "").toString().trim();
+
+    if (!tipoArquivo) return res.status(400).json({ message: "tipo_arquivo é obrigatório." });
+    if (!observacao) return res.status(400).json({ message: "observacao é obrigatória." });
+    if (!arquivoUrl) return res.status(400).json({ message: "arquivo_url é obrigatório." });
+
+    const result = await db.query(
+      `INSERT INTO viagem_documentos (
+         viagem_id, uploaded_by_user_id, tipo_arquivo, observacao, arquivo_url
+       ) VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, viagem_id, tipo_arquivo, observacao, arquivo_url, created_at`,
+      [viagemId, req.user.id, tipoArquivo, observacao, arquivoUrl]
+    );
+    const created = result.rows[0];
+    broadcast("viagem_documentos_created", created);
+    return res.status(201).json(created);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function uploadDocumento(req, res, next) {
+  try {
+    const viagemId = Number(req.params.viagemId);
+    const canAccess = await viagemModel.userCanAccessViagem(req.user, viagemId);
+    if (!canAccess) return res.status(404).json({ message: "Viagem não encontrada." });
+
+    const tipoArquivo = (req.body?.tipo_arquivo || "").toString().trim();
+    const observacao = (req.body?.observacao || "").toString().trim();
+    if (!tipoArquivo) return res.status(400).json({ message: "tipo_arquivo é obrigatório." });
+    if (!observacao) return res.status(400).json({ message: "observacao é obrigatória." });
+    if (!req.file) return res.status(400).json({ message: "Arquivo PDF é obrigatório." });
+    const fileName = (req.file.originalname || "").toLowerCase();
+    const isPdfMime = req.file.mimetype === "application/pdf";
+    const isPdfByName = fileName.endsWith(".pdf");
+    if (!isPdfMime && !isPdfByName) {
+      return res.status(400).json({ message: "Apenas arquivos PDF são permitidos." });
+    }
+
+    const upload = await uploadPdfToTripFolder({
+      viagemId,
+      originalName: req.file.originalname || `viagem_${viagemId}.pdf`,
+      mimeType: req.file.mimetype,
+      buffer: req.file.buffer,
+    });
+
+    const result = await db.query(
+      `INSERT INTO viagem_documentos (
+         viagem_id,
+         uploaded_by_user_id,
+         tipo_arquivo,
+         observacao,
+         arquivo_url,
+         drive_file_id,
+         drive_folder_id,
+         mime_type,
+         size_bytes,
+         original_file_name,
+         web_view_link
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING id, viagem_id, tipo_arquivo, observacao, arquivo_url, drive_file_id, drive_folder_id, mime_type, size_bytes, original_file_name, web_view_link, created_at`,
+      [
+        viagemId,
+        req.user.id,
+        tipoArquivo,
+        observacao,
+        upload.webViewLink || upload.webContentLink || "",
+        upload.driveFileId,
+        upload.driveFolderId,
+        upload.mimeType,
+        upload.sizeBytes,
+        upload.originalFileName,
+        upload.webViewLink || null,
+      ]
+    );
+
+    const created = result.rows[0];
+    broadcast("viagem_documentos_created", created);
+    return res.status(201).json(created);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function openDocumento(req, res, next) {
+  try {
+    const viagemId = Number(req.params.viagemId);
+    const documentoId = Number(req.params.documentoId);
+    const canAccess = await viagemModel.userCanAccessViagem(req.user, viagemId);
+    if (!canAccess) return res.status(404).json({ message: "Viagem não encontrada." });
+
+    const result = await db.query(
+      `SELECT id, viagem_id, COALESCE(web_view_link, arquivo_url) AS open_url
+       FROM viagem_documentos
+       WHERE id = $1 AND viagem_id = $2
+       LIMIT 1`,
+      [documentoId, viagemId]
+    );
+    if (!result.rows.length) return res.status(404).json({ message: "Documento não encontrado." });
+    if (!result.rows[0].open_url) {
+      return res.status(409).json({ message: "Documento sem URL de visualização." });
+    }
+    return res.json({ open_url: result.rows[0].open_url });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function deleteDocumento(req, res, next) {
+  try {
+    const viagemId = Number(req.params.viagemId);
+    const documentoId = Number(req.params.documentoId);
+    const canAccess = await viagemModel.userCanAccessViagem(req.user, viagemId);
+    if (!canAccess) return res.status(404).json({ message: "Viagem não encontrada." });
+
+    const role = await viagemModel.userRoleInViagem(req.user.id, viagemId);
+    if (!role || role === "viewer") {
+      return res.status(403).json({ message: "Sem permissão para excluir documento." });
+    }
+
+    const existing = await db.query(
+      `SELECT id, drive_file_id FROM viagem_documentos WHERE id = $1 AND viagem_id = $2 LIMIT 1`,
+      [documentoId, viagemId]
+    );
+    if (!existing.rows.length) return res.status(404).json({ message: "Documento não encontrado." });
+
+    try {
+      await deleteDriveFile(existing.rows[0].drive_file_id);
+    } catch (error) {
+      // Ignora falhas de remoção no Drive para não bloquear limpeza local.
+      console.warn("Falha ao excluir arquivo no Drive:", error.message);
+    }
+
+    await db.query("DELETE FROM viagem_documentos WHERE id = $1 AND viagem_id = $2", [documentoId, viagemId]);
+    broadcast("viagem_documentos_deleted", { id: documentoId, viagem_id: viagemId });
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function listByParent(req, res, next) {
   try {
     const entity = TABLES[req.params.entity];
@@ -523,6 +692,11 @@ module.exports = {
   acceptInvite,
   declineInvite,
   updateMember,
+  listDocumentos,
+  createDocumento,
+  uploadDocumento,
+  openDocumento,
+  deleteDocumento,
   listByParent,
   createByEntity,
   updateEntity,
