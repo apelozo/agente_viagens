@@ -9,3 +9,5 @@ backend/.env
 **/.env
 *.log
 android/local.properties
+backend/.drive-oauth-token.json
+chaves/appviagens-drive.json

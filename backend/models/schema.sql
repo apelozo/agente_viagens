@@ -57,6 +57,13 @@ ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS size_bytes BIGINT;
 ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS original_file_name TEXT;
 ALTER TABLE viagem_documentos ADD COLUMN IF NOT EXISTS web_view_link TEXT;
 
+-- Token OAuth do Google Drive (persistente; necessário em PaaS com disco efémero, ex. Render)
+CREATE TABLE IF NOT EXISTS drive_oauth_credentials (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  token_json JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS convites_viagem (
   id SERIAL PRIMARY KEY,
   viagem_id INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,

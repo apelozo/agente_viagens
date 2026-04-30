@@ -171,7 +171,7 @@ O ficheiro `backend/models/schema.sql` é a fonte de verdade. Inclui, entre outr
 
 - **JWT** no header `Authorization: Bearer …` para rotas protegidas.
 - **Chaves Google** e **credenciais de base** apenas no backend (nunca embutidas no cliente).
-- **CORS** configurado no Express para permitir chamadas a partir do domínio onde o Flutter Web está servido (em produção deve ser restrito ao domínio real).
+- **CORS** configurado no Express: em desenvolvimento aceita qualquer origem (`NODE_ENV` diferente de `production`); em produção restrito aos domínios configurados em `backend/server.js`.
 - **Variáveis de ambiente** no backend: `DATABASE_URL`, `JWT_SECRET`, `APP_BASE_URL`, chaves Google, SMTP, `PORT`, etc.
 
 ---

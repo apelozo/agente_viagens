@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -25,6 +26,25 @@ class ApiService {
 
   Future<dynamic> putRequest(String path, Map<String, dynamic> body) async {
     final response = await http.put(Uri.parse('$baseUrl$path'), headers: _headers, body: jsonEncode(body));
+    return _decode(response);
+  }
+
+  Future<dynamic> postMultipartRequest({
+    required String path,
+    required Map<String, String> fields,
+    required Uint8List fileBytes,
+    required String fileName,
+    String fileFieldName = 'arquivo',
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final request = http.MultipartRequest('POST', uri);
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+    request.fields.addAll(fields);
+    request.files.add(http.MultipartFile.fromBytes(fileFieldName, fileBytes, filename: fileName));
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
     return _decode(response);
   }
 

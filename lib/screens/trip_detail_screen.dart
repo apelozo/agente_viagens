@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/viagem.dart';
 import '../services/api_service.dart';
 import '../services/realtime_service.dart';
@@ -15,7 +17,7 @@ import 'restaurante_search_screen.dart';
 import 'timeline_screen.dart';
 import 'wishlist_screen.dart';
 
-enum DetailSection { cidades, transportes }
+enum DetailSection { cidades, transportes, documentos }
 
 enum EntityType { cidade, hotel, restaurante, passeio }
 
@@ -81,9 +83,11 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   DetailSection selected = DetailSection.cidades;
   List<Map<String, dynamic>> cidades = [];
   List<Map<String, dynamic>> _meiosTransporte = [];
+  List<Map<String, dynamic>> _documentos = [];
   String _filtroTipoTransporte = 'todos';
   String _filtroCiaAerea = 'todas';
   String? _transportesLoadError;
+  String? _documentosLoadError;
   bool loading = true;
   static const List<String> _ciasAereasFiltro = <String>[
     'Air Canada',
@@ -329,7 +333,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       if (ev.startsWith('cidades_') ||
           ev.startsWith('timeline_block') ||
           ev.startsWith('wishlist') ||
-          ev.startsWith('viagem_meios_transporte')) {
+          ev.startsWith('viagem_meios_transporte') ||
+          ev.startsWith('viagem_documentos_')) {
         notify('Dados atualizados (tempo real).');
         return;
       }
@@ -424,6 +429,243 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
+  Future<void> _openNovoDocumentoDialog() async {
+    final tipoCtrl = TextEditingController();
+    final observacaoCtrl = TextEditingController();
+    Uint8List? arquivoBytes;
+    String? arquivoNome;
+    bool saving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          title: const Text('Novo documento'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: tipoCtrl,
+                    decoration: const InputDecoration(labelText: 'Tipo do arquivo'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: observacaoCtrl,
+                    decoration: const InputDecoration(labelText: 'Observação'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final picked = await FilePicker.platform.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: const ['pdf'],
+                              withData: true,
+                            );
+                            if (picked == null || picked.files.isEmpty) return;
+                            final file = picked.files.first;
+                            if (file.bytes == null) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Não foi possível ler o arquivo selecionado.')),
+                              );
+                              return;
+                            }
+                            if (file.size > 20 * 1024 * 1024) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Arquivo excede o limite de 20MB.')),
+                              );
+                              return;
+                            }
+                            setModalState(() {
+                              arquivoBytes = file.bytes;
+                              arquivoNome = file.name;
+                            });
+                          },
+                    icon: const Icon(Icons.attach_file_rounded),
+                    label: Text(
+                      arquivoNome == null ? 'Selecionar PDF (até 20MB)' : 'Arquivo: $arquivoNome',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            AppButton(
+              label: saving ? 'Salvando...' : 'Salvar',
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final tipo = tipoCtrl.text.trim();
+                      final observacao = observacaoCtrl.text.trim();
+                      if (tipo.isEmpty || observacao.isEmpty || arquivoBytes == null || arquivoNome == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Preencha tipo, observação e selecione um PDF.')),
+                        );
+                        return;
+                      }
+                      setModalState(() => saving = true);
+                      try {
+                        await widget.api.postMultipartRequest(
+                          path: '/api/viagens/${widget.viagem.id}/documentos/upload',
+                          fields: {
+                            'tipo_arquivo': tipo,
+                            'observacao': observacao,
+                          },
+                          fileBytes: arquivoBytes!,
+                          fileName: arquivoNome!,
+                        );
+                        if (!ctx.mounted) return;
+                        Navigator.of(ctx).pop();
+                        await loadAll();
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Não foi possível salvar: $e')),
+                        );
+                      } finally {
+                        if (mounted) setModalState(() => saving = false);
+                      }
+                    },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDocumento(Map<String, dynamic> documento) async {
+    final documentoId = documento['id'];
+    try {
+      final response = await widget.api.getRequest(
+        '/api/viagens/${widget.viagem.id}/documentos/$documentoId/open',
+      );
+      final data = response is Map ? Map<String, dynamic>.from(response) : <String, dynamic>{};
+      final targetUrl = (data['open_url'] ?? data['url'] ?? '').toString().trim();
+      if (targetUrl.isEmpty) {
+        throw Exception('URL de abertura não retornada.');
+      }
+      final uri = Uri.tryParse(targetUrl);
+      if (uri == null) throw Exception('URL inválida.');
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível abrir o PDF.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao abrir documento: $e')),
+      );
+    }
+  }
+
+  Future<void> _deleteDocumento(Map<String, dynamic> documento) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir documento'),
+        content: const Text('Deseja excluir este documento?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final id = documento['id'];
+      await widget.api.deleteRequest('/api/viagens/${widget.viagem.id}/documentos/$id');
+      await loadAll();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível excluir: $e')),
+      );
+    }
+  }
+
+  Widget _buildDocumentosPanel() {
+    if (_documentosLoadError != null) {
+      return Center(
+        child: Text(
+          _documentosLoadError!,
+          style: const TextStyle(color: AppColors.errorRed),
+        ),
+      );
+    }
+    if (_documentos.isEmpty) {
+      return const Center(
+        child: Text(
+          'Nenhum documento cadastrado para esta viagem.',
+          style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+
+    return ListView(
+      children: [
+        ..._documentos.map((d) {
+          final tipo = asText(d['tipo_arquivo']);
+          final observacao = asText(d['observacao']);
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextButton(
+                          onPressed: () => _openDocumento(d),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            alignment: Alignment.centerLeft,
+                          ),
+                          child: Text(
+                            tipo.isEmpty ? 'Sem tipo' : tipo,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        Text(observacao.isEmpty ? 'Sem observação' : observacao),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Excluir documento',
+                    onPressed: () => _deleteDocumento(d),
+                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.errorRed),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 72),
+      ],
+    );
+  }
+
   Future<void> loadAll() async {
     setState(() => loading = true);
     final cityData =
@@ -440,6 +682,15 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     } catch (e) {
       _meiosTransporte = [];
       _transportesLoadError = 'Falha ao carregar transportes: $e';
+    }
+    try {
+      final docsData =
+          await widget.api.getRequest('/api/viagens/${widget.viagem.id}/documentos') as List<dynamic>;
+      _documentos = docsData.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      _documentosLoadError = null;
+    } catch (e) {
+      _documentos = [];
+      _documentosLoadError = 'Falha ao carregar documentos: $e';
     }
     if (mounted) setState(() => loading = false);
   }
@@ -640,17 +891,39 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       ),
                     ],
                   ),
-                  if (comp.isNotEmpty) ...[
+                  if (comp.isNotEmpty || cod.isNotEmpty) ...[
                     const SizedBox(height: 6),
-                    Text('Companhia: $comp',
-                        style: const TextStyle(
-                            color: Color(0xFF475569), fontSize: 13)),
-                  ],
-                  if (cod.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text('Localizador: $cod',
-                        style: const TextStyle(
-                            color: Color(0xFF475569), fontSize: 13)),
+                    Row(
+                      children: [
+                        if (comp.isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              'Companhia: $comp',
+                              style: const TextStyle(
+                                color: Color(0xFF475569),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        if (cod.isNotEmpty)
+                          Expanded(
+                            child: Align(
+                              alignment: comp.isNotEmpty
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Text(
+                                'Localizador: $cod',
+                                style: const TextStyle(
+                                  color: Color(0xFF475569),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                   if (obs.isNotEmpty) ...[
                     const SizedBox(height: 6),
@@ -670,11 +943,27 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                             fontSize: 14,
                             height: 1.35)),
                     const SizedBox(height: 6),
-                    Text(
-                      'Saída/retirada: ${_resumoDataHoraPar(m, 'a')} · Chegada/devolução: ${_resumoDataHoraPar(m, 'b')}',
-                      style: TextStyle(
+                    RichText(
+                      text: TextSpan(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.neutralGray.withValues(alpha: 0.95)),
+                          color: AppColors.neutralGray.withValues(alpha: 0.95),
+                        ),
+                        children: [
+                          const TextSpan(text: 'Saída/retirada: '),
+                          TextSpan(
+                            text: _resumoDataHoraPar(m, 'a'),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const TextSpan(text: ' · Chegada/devolução: '),
+                          TextSpan(
+                            text: _resumoDataHoraPar(m, 'b'),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
                     ),
                   ] else ...[
                     const SizedBox(height: 8),
@@ -696,12 +985,28 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       final chegada = _resumoDataHoraPar(trecho, 'b');
                       return Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '$idx. $tA → $tB\nSaída/retirada: $saida · Chegada/devolução: $chegada',
-                          style: const TextStyle(
-                            color: Color(0xFF334155),
-                            fontSize: 12,
-                            height: 1.35,
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                              color: Color(0xFF334155),
+                              fontSize: 12,
+                              height: 1.35,
+                            ),
+                            children: [
+                              TextSpan(text: '$idx. $tA → $tB\n'),
+                              const TextSpan(text: 'Saída/retirada: '),
+                              TextSpan(
+                                text: saida,
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const TextSpan(text: ' · Chegada/devolução: '),
+                              TextSpan(
+                                text: chegada,
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -1068,6 +1373,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       size: 18),
                                   label: Text('Transportes'),
                                 ),
+                                ButtonSegment(
+                                  value: DetailSection.documentos,
+                                  icon: Icon(Icons.picture_as_pdf_outlined,
+                                      size: 18),
+                                  label: Text('Documentos'),
+                                ),
                               ],
                               selected: <DetailSection>{selected},
                               onSelectionChanged: (Set<DetailSection> next) {
@@ -1086,6 +1397,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                             Expanded(
                               child: selected == DetailSection.transportes
                                   ? _buildTransportesPanel()
+                                  : selected == DetailSection.documentos
+                                      ? _buildDocumentosPanel()
                                   : cidades.isEmpty
                                       ? Center(
                                           child: Column(
@@ -1145,6 +1458,11 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     if (ok == true && mounted) await loadAll();
                   },
                   child: const Icon(Icons.add_road_rounded),
+                ),
+              DetailSection.documentos => FloatingActionButton(
+                  tooltip: 'Novo documento',
+                  onPressed: _openNovoDocumentoDialog,
+                  child: const Icon(Icons.note_add_outlined),
                 ),
             }
           : null,
