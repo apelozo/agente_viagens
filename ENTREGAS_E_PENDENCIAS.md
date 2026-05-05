@@ -172,7 +172,7 @@ Situacao: **implementado** no codigo em 26/04/2026.
 ## 6. Atualização 27/04/2026
 
 - **Listagem de transportes** (`trip_detail_screen.dart`): companhia e localizador na **mesma linha** (localizador à direita), tipografia igual entre os dois em destaque; valores de **data e hora** de saída/chegada em **negrito**.
-- **CORS** (`backend/server.js`): em **desenvolvimento** (`NODE_ENV` diferente de `production`), aceita qualquer origem (`origin: true`); em **produção**, mantém lista restrita de domínios.
+- **CORS** (`backend/server.js`): lista restrita via **`CORS_ALLOWED_ORIGINS`** (ver código actual; sem `origin: true` por `NODE_ENV`).
 
 ---
 
@@ -183,3 +183,10 @@ Situacao: **implementado** no codigo em 26/04/2026.
 - **Google OAuth**: autorização via conta Google pessoal implementada no backend (`/api/drive/oauth/start` e `/api/drive/oauth/callback`).
 - **Abertura e exclusão**: clique no tipo abre o documento; exclusão remove registro no banco e tenta remover o arquivo no Drive.
 - **CORS de produção**: backend passou a usar `CORS_ALLOWED_ORIGINS` (lista por vírgula) para origens permitidas.
+
+---
+
+## 8. Atualização 04/05/2026
+
+- **Documentação de deploy Save in Cloud (Jelastic):** mesmo ambiente com Postgres + Node (API) + site estático Flutter Web; `ROOT_DIR=/home/jelastic/ROOT/backend`; `README.md` e `DOCUMENTACAO_ATUAL.md` §16.
+- **CORS:** documentação alinhada ao código (`CORS_ALLOWED_ORIGINS` apenas).

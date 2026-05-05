@@ -238,3 +238,9 @@ Ainda **não** estão no escopo atual do código (ou só parcialmente no plano):
 - PostGIS / geoespacial avançado no banco
 
 Para detalhamento de fases futuras, usar `PLANO_EVOLUCAO_V2.md`.
+
+---
+
+## Deploy Save in Cloud (Jelastic)
+
+A documentação completa de deploy (mesmo ambiente: Postgres + Node + Flutter Web estático, `ROOT_DIR`, Git, CORS) está na **raiz do repositório:** `DOCUMENTACAO_ATUAL.md` §16 e `README.md` (secção *Save in Cloud*).

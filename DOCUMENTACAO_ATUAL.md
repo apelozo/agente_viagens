@@ -1,9 +1,9 @@
 # App Viagens — Documento de referência do estado atual
 
-**Consolidação:** 27/04/2026  
+**Consolidação:** 27/04/2026 (§18 — 06/05/2026: produção Render + Netlify)  
 **Objetivo:** descrever fielmente o que está implementado no repositório (backend + Flutter), para planejamento e onboarding.
 
-**Índice de documentos:** estado detalhado (este ficheiro) · entregas vs pendências: `ENTREGAS_E_PENDENCIAS.md` · roadmap: `PLANO_EVOLUCAO_V2.md` · identidade visual (guia rápido): `GUIA_IDENTIDADE_VISUAL.md`.
+**Índice de documentos:** estado detalhado (este ficheiro) · entregas vs pendências: `ENTREGAS_E_PENDENCIAS.md` · roadmap: `PLANO_EVOLUCAO_V2.md` · identidade visual (guia rápido): `GUIA_IDENTIDADE_VISUAL.md` · deploy principal: `README.md` (Render API + Netlify Web); Save in opcional: §16.
 
 ---
 
@@ -177,7 +177,7 @@ Eventos emitidos (não exaustivo): `viagem_created` / `viagem_updated` / `viagem
 
 ### Configuração da URL da API (Flutter)
 
-Em `lib/services/api_service.dart`, a base URL vem de `--dart-define=API_BASE_URL`, com **fallback** embutido para desenvolvimento. Para outro host/porta:
+Em `lib/services/api_service.dart`, a base URL vem de `--dart-define=API_BASE_URL`, com **fallback** para a API no Render (`https://agente-viagens-api-backend.onrender.com`) quando o define não é passado. Para desenvolvimento local:
 
 ```bash
 flutter run --dart-define=API_BASE_URL=http://localhost:5000
@@ -335,12 +335,9 @@ Compatibilidade:
 - formulario de viagem com fluxo de Enter:
   - descricao -> data inicial -> data final -> salvar
 
-### 14.5 CORS (desenvolvimento vs producao)
+### 14.5 CORS
 
-Em `backend/server.js`:
-
-- **Producao** (`NODE_ENV=production`): CORS com **lista restrita** de origens (ex.: site Netlify).
-- **Desenvolvimento** (qualquer valor de `NODE_ENV` que **nao** seja `production`): `origin: true`, aceitando **qualquer origem** para facilitar testes locais (Flutter Web em portas diferentes, IP da rede, etc.).
+Em `backend/server.js`, o CORS usa **apenas** a lista em **`CORS_ALLOWED_ORIGINS`** (origens separadas por vírgula, sem espaços se possível). Se a variável **não** estiver definida, o fallback inclui **`https://agentepessoaldaviagem.netlify.app`**, **`https://meuagentepessoal.net.br`**, **`https://www.meuagentepessoal.net.br`** e origens **localhost** para desenvolvimento. Se definires **`CORS_ALLOWED_ORIGINS`** no painel Render ou `.env`, essa lista **substitui** o fallback por completo (inclui aí todas as origens que precisares, incl. Netlify, apex, `www` e localhost).
 
 Fluxo recomendado apos deploy do backend em producao: executar `npm run db:init` para aplicar alteracoes de schema/migracao.
 
@@ -363,4 +360,26 @@ Fluxo recomendado apos deploy do backend em producao: executar `npm run db:init`
 
 ### 15.3 CORS em producao
 
-- CORS agora usa lista de origens permitidas por variavel de ambiente `CORS_ALLOWED_ORIGINS` (separadas por virgula), com fallback para o dominio Netlify.
+- CORS usa lista de origens permitidas por variavel de ambiente `CORS_ALLOWED_ORIGINS` (separadas por virgula). Referencia de alojamento Web: **Netlify** (origem exacta do site); API em **Render** (`https://agente-viagens-api-backend.onrender.com` como exemplo do repositório).
+
+## 16) Atualizacao 04/05/2026 — Save in Cloud (mesmo ambiente: API + Web + Postgres)
+
+- **Ambiente unico:** PostgreSQL + **Node.js** (Express, WebSocket) + **servidor web estatico** (Apache/Nginx ou equivalente no catalogo) para o build Flutter Web.
+- **Git (Gestor de Implantação):** repositorio monorepo; clone em `/home/jelastic/ROOT`; API em **`ROOT/backend/`**.
+- **Variaveis da camada Node:** `ROOT_DIR=/home/jelastic/ROOT/backend`, `APP_FILE=server.js`; `PORT` opcional (default interno **5000** no codigo se omitido).
+- **Frontend:** `flutter build web` com `API_BASE_URL` da API; publicar `build/web/` na **Netlify** (ou nó estático Save in); SPA na Netlify via `web/_redirects`.
+- **CORS:** `CORS_ALLOWED_ORIGINS` na API com a(s) origem(ns) HTTPS do site; se API e site tiverem hosts diferentes, listar ambas.
+- **Validacao:** `GET /health` na API (browser ou `curl` no Web SSH); teste do site no URL publico do no estatico.
+- **Logs API:** `Servidores App. : log` → `nodejs.log`; **Web SSH** para `pm2 logs` e `npm run db:init` em `/home/jelastic/ROOT/backend`.
+- **GitHub vs Render:** configurar Save in no painel da Save in; desactivar deploy automatico no Render se nao quiseres dois alvos no mesmo `push`.
+
+## 17) Atualizacao 05/05/2026 — Save in (referencia historica)
+
+- Notas de deploy **Save in Cloud** (mesmo ambiente, `ROOT_DIR`, etc.) mantidas em §16; o fluxo **principal** do produto voltou a **Render + Netlify** (§18).
+
+## 18) Atualizacao 06/05/2026 — Render + Netlify (producao)
+
+- **API:** `https://agente-viagens-api-backend.onrender.com` (Render). Definir `APP_BASE_URL`, `DATABASE_URL`, `JWT_SECRET`, `CORS_ALLOWED_ORIGINS` no painel.
+- **Flutter Web:** build com `--dart-define=API_BASE_URL=https://agente-viagens-api-backend.onrender.com`; publicar `build/web/` na **Netlify**; `CORS_ALLOWED_ORIGINS` na API com a origem HTTPS exacta do site Netlify.
+- **`lib/services/api_service.dart`:** fallback de `API_BASE_URL` alinhado à API Render quando não se passa `dart-define`.
+- **Express:** removido o serviço de ficheiros estáticos em `backend/public/web/`; a API expõe apenas REST, WebSocket e `/health`.

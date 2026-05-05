@@ -34,7 +34,8 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 GOOGLE_OAUTH_REDIRECT_URI=http://localhost:5000/api/drive/oauth/callback
 GOOGLE_OAUTH_TOKEN_PATH=.drive-oauth-token.json
 DRIVE_PARENT_FOLDER_ID=
-CORS_ALLOWED_ORIGINS=https://agentepessoaldaviagem.netlify.app
+# Produção: origens HTTPS exactas (vírgula, sem espaços). Incluir Netlify e domínio customizado se usares ambos.
+CORS_ALLOWED_ORIGINS=https://agentepessoaldaviagem.netlify.app,https://meuagentepessoal.net.br,https://www.meuagentepessoal.net.br
 ```
 
 Chaves Google não são embutidas no app; apenas o backend chama as APIs.
@@ -75,7 +76,9 @@ flutter run --dart-define=API_BASE_URL=http://localhost:5000
 
 Sem `API_BASE_URL`, o fallback do código pode apontar para um IP fixo de desenvolvimento — ajuste conforme sua rede.
 
-**Backend em produção (Render):** `https://agente-viagens-api-backend.onrender.com` — usar este valor em `--dart-define=API_BASE_URL=...` e na variável `API_BASE_URL` do Static Site / Netlify.
+**CORS em desenvolvimento:** se o Chrome usar outra origem (ex.: `http://localhost:<porta>` do `flutter run -d web-server`), acrescenta essa origem em `CORS_ALLOWED_ORIGINS` no `backend/.env` ou usa portas cobertas pelo fallback em `backend/server.js`.
+
+**Backend em produção (Render):** `https://agente-viagens-api-backend.onrender.com` — usar este valor em `--dart-define=API_BASE_URL=...` e na variável `API_BASE_URL` do Static Site Netlify / Render, se aplicável.
 
 ### Build Android e Web (release)
 
@@ -88,18 +91,19 @@ flutter build web --release --dart-define=API_BASE_URL=https://seu-servidor.com
 
 - **APK Android:** `build/app/outputs/flutter-apk/app-release.apk` (instalação direta no telemóvel).
 - **App Bundle (Google Play):** `flutter build appbundle --release --dart-define=API_BASE_URL=...` → `build/app/outputs/bundle/release/app-release.aab`.
-- **Web estático:** pasta `build/web` (servir com qualquer servidor HTTP(S); o backend deve permitir **CORS** para o domínio onde o site fica).
+- **Web estático:** pasta `build/web` (Netlify ou Render Static); o backend deve permitir **CORS** para a **origem HTTPS exacta** do site (`CORS_ALLOWED_ORIGINS` no Render).
 - **Assinatura Play Store:** copie `android/key.properties.example` para `android/key.properties`, coloque o `.jks` em `android/app/` e preencha as palavras-passe (ficheiros sensíveis já estão no `.gitignore`).
 
-#### Netlify (site estático)
+#### Netlify (site estático — referência de produção Web)
 
-1. Na máquina de desenvolvimento, com a URL **HTTPS** do teu backend:  
-   `flutter build web --release --dart-define=API_BASE_URL=https://api.teudominio.com`
-2. A pasta a enviar é `build/web` (já inclui `web/_redirects` → regra SPA para não dar 404 ao recarregar).
+1. Na máquina de desenvolvimento, com a URL **HTTPS** da API no Render:  
+   `flutter build web --release --dart-define=API_BASE_URL=https://agente-viagens-api-backend.onrender.com`
+2. A pasta a enviar é **`build/web`** (inclui `web/_redirects` → regra SPA na Netlify).
 3. **Opção A — Netlify Drop:** [app.netlify.com/drop](https://app.netlify.com/drop) → arrasta a pasta `build/web`.
-4. **Opção B — Netlify CLI:** instala a CLI, na raiz do projeto:  
-   `netlify deploy --dir=build/web` (pré-visualização) ou `netlify deploy --dir=build/web --prod` (produção). Na primeira vez faz login e associa um site.
-5. O Netlify **não inclui Flutter** no ambiente de build por omissão. Para deploy **a partir do Git** com build automático, usa **GitHub Actions** (ou outro CI) para correr `flutter build web` e enviar `build/web`, ou um script que instale o SDK Flutter no CI.
+4. **Opção B — Netlify CLI:** na raiz do projeto:  
+   `netlify deploy --dir=build/web` (pré-visualização) ou `netlify deploy --dir=build/web --prod` (produção).
+5. No **Render** (Web Service da API), define **`CORS_ALLOWED_ORIGINS`** com a origem HTTPS **exacta** do teu site Netlify (ex.: `https://agentepessoaldaviagem.netlify.app`). Várias origens: separar por vírgula, sem espaços.
+6. Para deploy **a partir do Git** com build automático na Netlify, usa **GitHub Actions** (ou CI) para correr `flutter build web` e publicar `build/web`, ou instala o SDK Flutter no ambiente de build da Netlify se disponível.
 
 #### Render (backend API + Flutter Web) e Neon
 
@@ -111,13 +115,17 @@ O repositório inclui **`render.yaml`** (Blueprint) com dois serviços: **API** 
 2. **Neon:** copia o **connection string** PostgreSQL → no Render, no serviço da API, define **`DATABASE_URL`**.
 3. **Blueprint:** no Render, **New → Blueprint**, liga o repo e deixa detetar `render.yaml`, ou cria manualmente os dois serviços com os mesmos valores do ficheiro.
 4. **Segredos no painel** (o assistente pede os marcados `sync: false`):
-   - API: **`JWT_SECRET`**, **`APP_BASE_URL`** = `https://<nome-api>.onrender.com` (URL real após o primeiro deploy).
-   - Site estático: **`API_BASE_URL`** = a mesma URL base do API (ex.: `https://<nome-api>.onrender.com`).
+   - API: **`JWT_SECRET`**, **`APP_BASE_URL`** = `https://agente-viagens-api-backend.onrender.com` (ou a URL real da tua API no Render).
+   - Site estático: **`API_BASE_URL`** = a mesma URL base da API (ex.: `https://agente-viagens-api-backend.onrender.com`).
 5. **Schema na base:** após a API estar no ar com `DATABASE_URL` correto, **Shell** no Web Service da API → `npm run db:init` (ou corre `npm run db:init` localmente com o mesmo `DATABASE_URL` do Neon).
 6. **Google / SMTP:** opcional — adiciona no painel da API (como no `.env` de exemplo).
-7. **WebSocket / CORS:** cliente com `https` na API → `wss`; `cors()` aberto permite o site no outro domínio `.onrender.com`.
+7. **WebSocket / CORS:** cliente com `https` na API → `wss`. CORS restrito a **`CORS_ALLOWED_ORIGINS`** (lista separada por vírgulas); inclui a origem HTTPS exacta do Flutter Web na Netlify.
 
-O primeiro build do **site Flutter** no Render descarrega o SDK (demorado). Se falhar por timeout, volta a **Deploy** manual ou considera gerar `build/web` noutro CI e publicar só os ficheiros estáticos.
+O primeiro build do **site Flutter** no Render descarrega o SDK (demorado). Se falhar por timeout, volta a **Deploy** manual ou gera `build/web` localmente e publica na Netlify.
+
+#### Save in Cloud (opcional)
+
+Deploy alternativo (Postgres + Node + estático ou só Node) — ver `DOCUMENTACAO_ATUAL.md` §16 como referência histórica; o fluxo principal do repositório voltou a **Render + Netlify**.
 
 ##### Subir o código para o GitHub (linha de comandos)
 
@@ -209,7 +217,7 @@ Cria o repositório vazio em [github.com/new](https://github.com/new) antes do `
 
 | Documento | Conteúdo |
 |-----------|----------|
-| **`DOCUMENTACAO_ATUAL.md`** | Estado técnico do sistema (API, schema, Flutter, WebSocket, design) |
+| **`DOCUMENTACAO_ATUAL.md`** | Estado técnico do sistema (API, schema, Flutter, WebSocket, design); deploy Render + Netlify; Save in §16 opcional |
 | **`ENTREGAS_E_PENDENCIAS.md`** | O que foi entregue e o que falta (backlog resumido) |
 | **`PLANO_EVOLUCAO_V2.md`** | Roadmap TripWeave (fases 0–6) |
 | **`GUIA_IDENTIDADE_VISUAL.md`** | Tokens e padrões de UI para novas telas Flutter |
@@ -232,7 +240,20 @@ Legado / referência: **`Documentação Sistema/Ponto de Restauração v1.1.md`*
 ## Atualizacao 27/04/2026
 
 - Listagem de transportes: companhia e localizador na mesma linha (destaque igual); datas/horas em negrito nos resumos de trecho.
-- CORS em desenvolvimento (`NODE_ENV` diferente de `production`): aceita qualquer origem para facilitar Flutter Web/local; producao mantém lista restrita (`backend/server.js`).
+
+## Atualizacao 06/05/2026
+
+- **Produção:** fluxo principal **Render** (API `https://agente-viagens-api-backend.onrender.com`) + **Netlify** (Flutter Web). Removido o serviço de ficheiros estáticos em `backend/public/web/` no Express; **CORS** em fallback volta a incluir **`https://agentepessoaldaviagem.netlify.app`** e localhost.
+- **`lib/services/api_service.dart`:** `API_BASE_URL` por omissão (sem `--dart-define`) = URL da API no Render acima.
+
+## Atualizacao 05/05/2026
+
+- Documentação Save in / opção Express em `public/web` (revertida em 06/05); histórico nas versões anteriores do Git se necessário.
+
+## Atualizacao 04/05/2026
+
+- Documentação de deploy na **Save in Cloud (Jelastic):** mesmo ambiente com **Postgres + Node (API) + site estático Flutter Web**; **Gestor de Implantação** + Git; **`ROOT_DIR=/home/jelastic/ROOT/backend`**; validação **`GET /health`**; Web SSH e `nodejs.log`.
+- **CORS** em `backend/server.js`: lista **`CORS_ALLOWED_ORIGINS`** apenas (sem `origin: true` por `NODE_ENV` no código actual).
 
 ## Atualizacao 29/04/2026
 

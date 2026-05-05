@@ -1,62 +1,128 @@
 require("dotenv").config();
+
 const express = require("express");
+
 const cors = require("cors");
+
 const http = require("http");
+
 const rateLimiter = require("./middleware/rateLimiter");
+
 const errorHandler = require("./middleware/errorHandler");
+
 const { initWebSocket } = require("./services/websocketService");
 
+
+
 const authRoutes = require("./routes/authRoutes");
+
 const viagensRoutes = require("./routes/viagensRoutes");
+
 const placesRoutes = require("./routes/placesRoutes");
+
 const distanceRoutes = require("./routes/distanceRoutes");
+
 const timelineRoutes = require("./routes/timelineRoutes");
+
 const timelineController = require("./controllers/timelineController");
+
 const wishlistRoutes = require("./routes/wishlistRoutes");
+
 const suggestionsRoutes = require("./routes/suggestionsRoutes");
+
 const mobilityRoutes = require("./routes/mobilityRoutes");
+
 const driveRoutes = require("./routes/driveRoutes");
+
 const { authRequired } = require("./middleware/auth");
 
+
+
 const app = express();
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "https://agentepessoaldaviagem.netlify.app")
+
+const allowedOrigins = (
+
+  process.env.CORS_ALLOWED_ORIGINS ||
+
+  "https://agentepessoaldaviagem.netlify.app,https://meuagentepessoal.net.br,https://www.meuagentepessoal.net.br,http://localhost:8080,http://127.0.0.1:8080,http://localhost:5000,http://127.0.0.1:5000"
+
+)
+
   .split(",")
+
   .map((origin) => origin.trim())
+
   .filter(Boolean);
+
 const corsOptions = {
-  // Produção: permitir apenas origens explicitamente autorizadas.
+
   origin: allowedOrigins,
+
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+
   credentials: true,
+
   optionsSuccessStatus: 204
+
 };
 
+
+
 app.use(cors(corsOptions));
+
 app.use(express.json());
+
 app.use(rateLimiter);
 
+
+
 app.get("/health", (req, res) => res.json({ ok: true }));
+
 app.use("/api/auth", authRoutes);
+
 app.use("/api/viagens", viagensRoutes);
+
 app.use("/api/places", placesRoutes);
+
 app.use("/api/distance", distanceRoutes);
+
 // POST especifico antes do router (garante match; evita "Cannot POST" em processos antigos)
+
 app.post(
+
   "/api/timeline/:viagemId/gerar-tempo-livre-dias",
+
   authRequired,
+
   timelineController.gerarTempoLivrePorDia
+
 );
+
 app.use("/api/timeline", timelineRoutes);
+
 app.use("/api/wishlist", wishlistRoutes);
+
 app.use("/api/suggestions", suggestionsRoutes);
+
 app.use("/api/mobility", mobilityRoutes);
+
 app.use("/api/drive", driveRoutes);
+
 app.use(errorHandler);
 
+
+
 const server = http.createServer(app);
+
 initWebSocket(server);
 
+
+
 const port = Number(process.env.PORT || 5000);
+
 server.listen(port, () => {
+
   console.log(`Backend iniciado na porta ${port}`);
+
 });
+

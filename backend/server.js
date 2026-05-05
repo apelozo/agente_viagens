@@ -19,12 +19,16 @@ const driveRoutes = require("./routes/driveRoutes");
 const { authRequired } = require("./middleware/auth");
 
 const app = express();
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "https://agentepessoaldaviagem.netlify.app")
+// CORS: CORS_ALLOWED_ORIGINS no .env / painel Render substitui a lista completa.
+// Fallback: Netlify de referência + domínio customizado (apex + www) + localhost.
+const allowedOrigins = (
+  process.env.CORS_ALLOWED_ORIGINS ||
+  "https://agentepessoaldaviagem.netlify.app,https://meuagentepessoal.net.br,https://www.meuagentepessoal.net.br,http://localhost:8080,http://127.0.0.1:8080,http://localhost:5000,http://127.0.0.1:5000"
+)
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 const corsOptions = {
-  // Produção: permitir apenas origens explicitamente autorizadas.
   origin: allowedOrigins,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,

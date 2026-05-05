@@ -85,11 +85,12 @@ Este documento descreve a **arquitetura em alto nível**, as **tecnologias** uti
 | Ferramenta | Papel típico neste projeto |
 |------------|----------------------------|
 | **Git / GitHub** | Controlo de versões e origem do código. |
-| **Render** (ou similar) | Hospedagem do backend e/ou site estático gerado pelo Flutter Web. |
+| **Render** | API e/ou Static Site; exemplo de API: `https://agente-viagens-api-backend.onrender.com`. |
 | **Neon** (ou similar) | PostgreSQL gerido na nuvem. |
-| **Netlify / Render Static** | Servir ficheiros estáticos do `flutter build web`. |
+| **Netlify** | Site Flutter Web (`build/web`). |
+| **Save in Cloud** | Alternativa opcional; ver `DOCUMENTACAO_ATUAL.md` §16. |
 
-Ficheiros de apoio na raiz: `render.yaml`, `scripts/render-build-web.sh`, `web/_redirects`.
+Ficheiros de apoio na raiz: `render.yaml`, `scripts/render-build-web.sh`, `web/_redirects` (SPA na Netlify).
 
 ---
 
@@ -169,7 +170,7 @@ O ficheiro `backend/models/schema.sql` é a fonte de verdade. Inclui, entre outr
 
 - **JWT** no header `Authorization: Bearer …` para rotas protegidas.
 - **Chaves Google** e **credenciais de base** apenas no backend (nunca embutidas no cliente).
-- **CORS** configurado no Express para permitir chamadas a partir do domínio onde o Flutter Web está servido (em produção deve ser restrito ao domínio real).
+- **CORS** no Express: lista **`CORS_ALLOWED_ORIGINS`** (`backend/server.js`); incluir a origem HTTPS exacta do Flutter Web.
 - **Variáveis de ambiente** no backend: `DATABASE_URL`, `JWT_SECRET`, `APP_BASE_URL`, chaves Google, SMTP, `PORT`, etc.
 
 ---
@@ -178,7 +179,7 @@ O ficheiro `backend/models/schema.sql` é a fonte de verdade. Inclui, entre outr
 
 | Ficheiro | Tema |
 |----------|------|
-| `README.md` | Setup local, builds, Netlify, Render, variáveis `.env`. |
+| `README.md` (raiz) | Setup local, builds, **Render**, **Netlify**, variáveis `.env`. |
 | `DOCUMENTACAO_ATUAL.md` | Estado técnico detalhado (se existir e estiver atualizado). |
 | `ENTREGAS_E_PENDENCIAS.md` | Entregas vs backlog. |
 | `PLANO_EVOLUCAO_V2.md` | Roadmap de produto. |

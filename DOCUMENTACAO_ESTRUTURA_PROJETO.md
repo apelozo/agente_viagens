@@ -85,13 +85,14 @@ Este documento descreve a **arquitetura em alto nível**, as **tecnologias** uti
 | Ferramenta | Papel típico neste projeto |
 |------------|----------------------------|
 | **Git / GitHub** | Controlo de versões e origem do código. |
-| **Render** (ou similar) | Hospedagem do backend e/ou site estático gerado pelo Flutter Web. |
-| **Neon** (ou similar) | PostgreSQL gerido na nuvem. |
-| **Netlify / Render Static** | Servir ficheiros estáticos do `flutter build web`. |
+| **Render** | API Node (`https://agente-viagens-api-backend.onrender.com` no exemplo do repositório) e/ou Static Site com `flutter build web`. |
+| **Neon** (ou similar) | PostgreSQL gerido na nuvem (ligado à API no Render). |
+| **Netlify** | Site Flutter Web a partir da pasta `build/web` (regra SPA em `web/_redirects`). |
+| **Save in Cloud (Jelastic)** | Alternativa opcional (Postgres + Node + estático); ver `DOCUMENTACAO_ATUAL.md` §16. |
 
-**URL de referência do API em produção (este projeto):** `https://agente-viagens-api-backend.onrender.com` (configurar como `API_BASE_URL` nos builds Flutter Web/Android e no painel do Static Site).
+**URL de referência da API (Render):** `https://agente-viagens-api-backend.onrender.com`. Configurar como `API_BASE_URL` nos builds Flutter Web/Android (`--dart-define`).
 
-Ficheiros de apoio na raiz: `render.yaml`, `scripts/render-build-web.sh`, `web/_redirects`.
+Ficheiros de apoio na raiz: `render.yaml`, `scripts/render-build-web.sh`, `web/_redirects` (SPA na Netlify).
 
 ---
 
@@ -171,7 +172,7 @@ O ficheiro `backend/models/schema.sql` é a fonte de verdade. Inclui, entre outr
 
 - **JWT** no header `Authorization: Bearer …` para rotas protegidas.
 - **Chaves Google** e **credenciais de base** apenas no backend (nunca embutidas no cliente).
-- **CORS** configurado no Express: em desenvolvimento aceita qualquer origem (`NODE_ENV` diferente de `production`); em produção restrito aos domínios configurados em `backend/server.js`.
+- **CORS** no Express: lista restrita em **`CORS_ALLOWED_ORIGINS`** (`backend/server.js`); incluir a origem HTTPS exacta do Flutter Web (e outras permitidas, separadas por vírgula).
 - **Variáveis de ambiente** no backend: `DATABASE_URL`, `JWT_SECRET`, `APP_BASE_URL`, chaves Google, SMTP, `PORT`, etc.
 
 ---
@@ -180,8 +181,8 @@ O ficheiro `backend/models/schema.sql` é a fonte de verdade. Inclui, entre outr
 
 | Ficheiro | Tema |
 |----------|------|
-| `README.md` | Setup local, builds, Netlify, Render, variáveis `.env`. |
-| `DOCUMENTACAO_ATUAL.md` | Estado técnico detalhado (se existir e estiver atualizado). |
+| `README.md` | Setup local, builds, **Render** + **Netlify**, Save in opcional, variáveis `.env`. |
+| `DOCUMENTACAO_ATUAL.md` | Estado técnico detalhado; deploy §18 (Render + Netlify). |
 | `ENTREGAS_E_PENDENCIAS.md` | Entregas vs backlog. |
 | `PLANO_EVOLUCAO_V2.md` | Roadmap de produto. |
 | `MANUAL_USUARIO.md` | Manual funcional para utilizadores. |
@@ -190,7 +191,7 @@ O ficheiro `backend/models/schema.sql` é a fonte de verdade. Inclui, entre outr
 
 ## 10. Resumo
 
-O projeto **App de Viagens** é uma solução **Flutter + Node.js + PostgreSQL**, com **autenticação JWT**, **integrações Google** via servidor, **WebSocket** para atualizações em tempo real e uma **UI** organizada em ecrãs e serviços Dart. A estrutura de pastas separa claramente **cliente** (`lib/`), **servidor** (`backend/`) e **ficheiros de plataforma** (`android/`, `web/`), facilitando deploy independente do API e do frontend estático ou mobile.
+O projeto **App de Viagens** é uma solução **Flutter + Node.js + PostgreSQL**, com **autenticação JWT**, **integrações Google** via servidor, **WebSocket** para atualizações em tempo real e uma **UI** organizada em ecrãs e serviços Dart. A estrutura de pastas separa claramente **cliente** (`lib/`), **servidor** (`backend/`) e **ficheiros de plataforma** (`android/`, `web/`), facilitando deploy da API no **Render** e do frontend Web na **Netlify** (ou mobile).
 
 ---
 

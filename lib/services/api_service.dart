@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.5.106:5000',
+    defaultValue: 'https://agente-viagens-api-backend.onrender.com',
   );
   String? token;
 
