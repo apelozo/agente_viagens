@@ -84,6 +84,22 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
       );
       finalPath =
           '$path${path.contains('?') ? '&' : '?'}delete_related_event=${deleteEventToo == true ? 'true' : 'false'}';
+    } else if (type == EntityType.hotel) {
+      final deleteEventToo = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Excluir evento vinculado?'),
+          content: const Text(
+            'Este hotel pode ter um evento de check-in na timeline. Deseja excluir esse evento também?',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Manter evento')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Excluir evento')),
+          ],
+        ),
+      );
+      finalPath =
+          '$path${path.contains('?') ? '&' : '?'}delete_related_event=${deleteEventToo == true ? 'true' : 'false'}';
     }
     await widget.api.deleteRequest(finalPath);
     await load();
@@ -218,9 +234,11 @@ class _CityDetailScreenState extends State<CityDetailScreen> {
                               onPressed: () => openForm(type, item: item),
                               icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.primaryBlue),
                             ),
-                            if (type == EntityType.restaurante)
+                            if (type == EntityType.hotel ||
+                                type == EntityType.restaurante ||
+                                type == EntityType.passeio)
                               IconButton(
-                                tooltip: 'Navegar',
+                                tooltip: 'Abrir no Google Maps',
                                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                                 padding: EdgeInsets.zero,
                                 onPressed: () => _openGoogleMapsNavigation(item),

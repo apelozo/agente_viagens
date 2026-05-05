@@ -122,6 +122,66 @@ async function syncPasseioTimelineEvent({ passeioId, actorUserId, client = db })
   return { action: "created", passeio, timeline: created.rows[0] };
 }
 
+async function syncHotelTimelineEvent({ hotelId, actorUserId, client = db }) {
+  const hotelResult = await client.query(
+    `SELECT
+      h.id,
+      h.nome,
+      h.endereco,
+      h.data_checkin,
+      h.hora_checkin,
+      c.viagem_id
+     FROM hoteis h
+     JOIN cidades c ON c.id = h.cidade_id
+     WHERE h.id = $1
+     LIMIT 1`,
+    [hotelId]
+  );
+  if (!hotelResult.rows.length) return null;
+  const hotel = hotelResult.rows[0];
+
+  const timelineResult = await client.query(`SELECT * FROM roteiro_blocos WHERE hotel_id = $1 LIMIT 1`, [hotelId]);
+  const existing = timelineResult.rows[0];
+
+  if (!hotel.data_checkin) {
+    return { action: "skipped_no_date", hotel, timeline: existing || null };
+  }
+
+  const titulo = `Check-in: ${hotel.nome}`;
+
+  if (existing) {
+    const updated = await client.query(
+      `UPDATE roteiro_blocos
+       SET titulo = $1,
+           data = $2,
+           hora_inicio = $3,
+           local = $4
+       WHERE id = $5
+       RETURNING *`,
+      [titulo, hotel.data_checkin, hotel.hora_checkin || null, hotel.endereco || null, existing.id]
+    );
+    return { action: "updated", hotel, timeline: updated.rows[0] };
+  }
+
+  const created = await client.query(
+    `INSERT INTO roteiro_blocos (
+      viagem_id, hotel_id, titulo, tipo, data, hora_inicio, hora_fim, local, link_url, descricao, created_by
+    ) VALUES ($1,$2,$3,'Evento Fixo',$4,$5,NULL,$6,NULL,$7,$8)
+    RETURNING *`,
+    [
+      hotel.viagem_id,
+      hotel.id,
+      titulo,
+      hotel.data_checkin,
+      hotel.hora_checkin || null,
+      hotel.endereco || null,
+      "Evento vinculado automaticamente ao hotel (data de check-in).",
+      actorUserId || null
+    ]
+  );
+  return { action: "created", hotel, timeline: created.rows[0] };
+}
+
 async function listViagens(req, res, next) {
   try {
     const page = Number(req.query.page || 1);
@@ -602,6 +662,19 @@ async function createByEntity(req, res, next) {
           broadcast("timeline_block_updated", timelinePayload);
         }
       }
+    } else if (entity.table === "hoteis") {
+      const syncResult = await syncHotelTimelineEvent({
+        hotelId: result.rows[0].id,
+        actorUserId: req.user?.id
+      });
+      if (syncResult?.timeline) {
+        const timelinePayload = serializeDates(syncResult.timeline);
+        if (syncResult.action === "created") {
+          broadcast("timeline_block_created", timelinePayload);
+        } else if (syncResult.action === "updated") {
+          broadcast("timeline_block_updated", timelinePayload);
+        }
+      }
     }
     broadcast(`${entity.table}_created`, serialized);
     return res.status(201).json(serialized);
@@ -625,6 +698,19 @@ async function updateEntity(req, res, next) {
     if (entity.table === "passeios" && result.rows[0]) {
       const syncResult = await syncPasseioTimelineEvent({
         passeioId: result.rows[0].id,
+        actorUserId: req.user?.id
+      });
+      if (syncResult?.timeline) {
+        const timelinePayload = serializeDates(syncResult.timeline);
+        if (syncResult.action === "created") {
+          broadcast("timeline_block_created", timelinePayload);
+        } else if (syncResult.action === "updated") {
+          broadcast("timeline_block_updated", timelinePayload);
+        }
+      }
+    } else if (entity.table === "hoteis" && result.rows[0]) {
+      const syncResult = await syncHotelTimelineEvent({
+        hotelId: result.rows[0].id,
         actorUserId: req.user?.id
       });
       if (syncResult?.timeline) {
@@ -668,6 +754,30 @@ async function deleteEntity(req, res, next) {
           broadcast("timeline_block_deleted", { id: block.id, viagem_id: block.viagem_id });
         } else {
           broadcast("timeline_block_updated", { id: block.id, passeio_id: null, viagem_id: block.viagem_id });
+        }
+      }
+      broadcast(`${entity.table}_deleted`, { id: req.params.id });
+      return res.status(204).send();
+    }
+    if (entity.table === "hoteis") {
+      const hotelId = Number(req.params.id);
+      const deleteRelatedEvent = parseBoolean(req.query.delete_related_event);
+      const existingHotel = await db.query(`SELECT id FROM hoteis WHERE id = $1 LIMIT 1`, [hotelId]);
+      if (!existingHotel.rows.length) {
+        return res.status(404).json({ message: "Hotel não encontrado." });
+      }
+      const relatedBlocks = await db.query(`SELECT id, viagem_id FROM roteiro_blocos WHERE hotel_id = $1`, [hotelId]);
+      if (deleteRelatedEvent && relatedBlocks.rows.length) {
+        await db.query(`DELETE FROM roteiro_blocos WHERE hotel_id = $1`, [hotelId]);
+      } else if (relatedBlocks.rows.length) {
+        await db.query(`UPDATE roteiro_blocos SET hotel_id = NULL WHERE hotel_id = $1`, [hotelId]);
+      }
+      await db.query(`DELETE FROM hoteis WHERE id = $1`, [hotelId]);
+      for (const block of relatedBlocks.rows) {
+        if (deleteRelatedEvent) {
+          broadcast("timeline_block_deleted", { id: block.id, viagem_id: block.viagem_id });
+        } else {
+          broadcast("timeline_block_updated", { id: block.id, hotel_id: null, viagem_id: block.viagem_id });
         }
       }
       broadcast(`${entity.table}_deleted`, { id: req.params.id });

@@ -177,6 +177,11 @@ ADD COLUMN IF NOT EXISTS passeio_id INTEGER REFERENCES passeios(id) ON DELETE SE
 ALTER TABLE roteiro_blocos
 ADD COLUMN IF NOT EXISTS link_url TEXT;
 
+ALTER TABLE roteiro_blocos
+ADD COLUMN IF NOT EXISTS hotel_id INTEGER REFERENCES hoteis(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_roteiro_blocos_hotel_id ON roteiro_blocos(hotel_id);
+
 CREATE INDEX IF NOT EXISTS idx_viagens_user_id ON viagens(user_id);
 CREATE INDEX IF NOT EXISTS idx_viagem_membros_viagem_id ON viagem_membros(viagem_id);
 CREATE INDEX IF NOT EXISTS idx_viagem_membros_user_id ON viagem_membros(user_id);
